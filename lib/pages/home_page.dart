@@ -85,7 +85,8 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
 
   Future<void> _retry(VideoRecord video) async {
     try {
-      await UploadService(authService: widget.authService).enqueue(video);
+      await UploadService(authService: widget.authService)
+          .enqueue(video, force: true);
     } catch (_) {}
     await _load();
   }

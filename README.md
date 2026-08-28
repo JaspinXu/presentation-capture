@@ -1,105 +1,149 @@
-# NUS Presentation Capture Demo
+# NUS Presentation Capture
 
-An iPhone-first internal app for recording continuous presentation videos and uploading them reliably to an NUS Lab Linux server.
+An iPhone-first Flutter app for recording presentation videos as ordinary MP4 files with microphone audio and reliably uploading them to an NUS Lab Linux server.
 
-## Included in this demo
+This project borrows Stera's durable-session and reconciliation ideas, but deliberately does not include ARKit/ARCore, MCAP, pose, IMU, depth, point clouds, meshes, filters, or editing.
 
-- Administrator-provisioned username/password sign-in
-- Rear-camera recording in landscape orientation
-- 720p default and optional 1080p recording
-- Continuous MP4 recording with microphone audio (no pause, editing, filters, or beauty effects)
-- Automatic copy to iPhone Photos
-- Local recording library and playback
-- Required experiment ID and participant ID metadata
-- Optional title and notes
-- 8 MiB multipart uploads with SHA-256 verification
-- iOS background `URLSession` upload tasks
-- Resume after network interruption or app restart
-- Wi-Fi/mobile-data preference
+## Current feature set
+
+- Rear-camera landscape recording with microphone audio
+- 720p, 1080p, and 4K presets (the camera plugin chooses the best supported format at or below the requested preset)
+- Pause and resume within one MP4 recording
+- App-private local storage; recordings are not copied to iPhone Photos
+- Local review and playback
+- Experiment ID, participant ID, optional title, and notes
+- Lab account/password login for demo and development
+- Configurable Sign in with Apple and Google Sign-In
+- Durable SQLite `upload_sessions` and `upload_parts` state
+- Frozen 16 MiB multipart upload plan with a three-part staging window
+- Native iOS background upload engine with SQLite/WAL journal, automatic sliding-window refill, server reconciliation, retry backoff, and SHA-256 checks
+- Streaming server-side assembly so a large 4K upload is not loaded into memory during finalization
 - English and Simplified Chinese UI
-- Docker-ready Linux upload server
 
-## Project layout
+## Architecture
 
 ```text
-lib/                 Flutter application
-ios/Runner/          iOS host and native background uploader
-server/              Node.js multipart upload server
-test/                Flutter tests
+Flutter camera (H.264/HEVC MP4 + microphone)
+  -> app Documents/recordings/<video-id>.mp4
+  -> SQLite videos + upload_sessions + upload_parts
+  -> native iOS SQLite journal + at most 3 temporary 16 MiB chunks
+  -> background URLSession with automatic window refill
+  -> NUS Linux Express API
+  -> parts/<part-number>
+  -> streamed final.mp4 assembly + whole-file SHA-256 verification
 ```
 
-## Start the demo upload server
+The server's completed-parts list is authoritative. After a restart or network interruption, the client compares local SQLite state, the native SQLite journal, active iOS tasks, and the server before scheduling missing parts again. While Flutter is suspended, Swift creates the next part only when a window slot becomes available and directly finalizes the upload after the last part. The app never prepares a second full copy of a 4K video.
 
-With Node.js 22 or later:
+## Run the server locally
 
-```bash
-cd server
+Node.js 22 or later:
+
+```powershell
+cd G:\presentation-capture\server
 npm install
 npm start
 ```
 
-Or on Linux with Docker:
+Or with Docker:
 
-```bash
-cd server
+```powershell
+cd G:\presentation-capture\server
 docker compose up --build
 ```
 
-The demo credentials are:
+Demo credentials:
 
 ```text
 Account:  demo@nus.edu.sg
 Password: demo1234
 ```
 
-Uploaded videos are stored under `server/data/<video-id>/final.mp4`. Each directory also contains `metadata.json` and the uploaded parts.
+For a physical iPhone, set the app's server URL to the computer's LAN address, such as `http://192.168.1.20:8080`. `localhost` on the phone means the phone itself.
 
-For a physical iPhone, enter the server's LAN address on the login screen, for example `http://192.168.1.20:8080`. `localhost` on an iPhone refers to the iPhone itself.
+## Apple and Google login configuration
 
-## Run on iPhone
+Both social-login buttons are implemented, but provider credentials cannot be committed to the repository. Until the following configuration is supplied, the lab account/password path remains usable.
 
-iOS builds require macOS with Xcode. On a Mac:
+### Apple
+
+1. Use the bundle ID `sg.edu.nus.nusPresentationCapture`, or replace it consistently with the lab's App ID.
+2. Enable **Sign in with Apple** for that App ID in the Apple Developer portal.
+3. Keep `Runner/Runner.entitlements` attached to all Runner build configurations.
+4. Set the server variable `APPLE_CLIENT_IDS` to the allowed bundle ID(s), comma-separated.
+
+### Google
+
+1. Create an OAuth iOS client for the final bundle ID in Google Cloud Console.
+2. Add its reversed client-ID URL scheme to the Runner target in Xcode. A downloaded `GoogleService-Info.plist` can be used for the same configuration, but do not commit secrets unintentionally.
+3. Build with the IDs when the plist does not provide them:
+
+```bash
+flutter run \
+  --dart-define=GOOGLE_IOS_CLIENT_ID=YOUR_IOS_CLIENT_ID \
+  --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_SERVER_CLIENT_ID
+```
+
+4. Set the server variable `GOOGLE_CLIENT_IDS` to all accepted token audiences, comma-separated.
+
+The server verifies Apple and Google ID-token signatures, issuer, expiry, and audience against the providers' remote public keys before issuing its own 30-day signed session token.
+
+## Server environment variables
+
+```text
+PORT=8080
+DATA_DIR=/data
+AUTH_SECRET=<long random secret>
+GOOGLE_CLIENT_IDS=<comma-separated OAuth client IDs>
+APPLE_CLIENT_IDS=<comma-separated Apple bundle/service IDs>
+ENABLE_DEMO_LOGIN=true
+DEMO_ACCOUNT=demo@nus.edu.sg
+DEMO_PASSWORD=demo1234
+DEMO_TOKEN=<development token>
+```
+
+For deployment, set `ENABLE_DEMO_LOGIN=false`, use HTTPS, and replace every default secret. Uploaded files are written to `DATA_DIR/<video-id>/final.mp4` with metadata and parts beside them.
+
+## Verification on this Windows computer
+
+The bundled Flutter SDK is not on the global `PATH`, so use its explicit path:
+
+```powershell
+cd G:\presentation-capture
+& 'G:\.codex-tools\flutter-sdk\bin\flutter.bat' pub get
+& 'G:\.codex-tools\flutter-sdk\bin\flutter.bat' analyze
+& 'G:\.codex-tools\flutter-sdk\bin\flutter.bat' test
+
+cd G:\presentation-capture\server
+npm test
+```
+
+The server test covers login, idempotent multipart initialization, per-part checksum validation, resume-state lookup, streamed assembly, and final SHA-256 verification.
+
+## iPhone device validation
+
+iOS compilation and real camera validation still require macOS/Xcode, either a borrowed Mac or a CI/macOS cloud runner. On the Mac:
 
 ```bash
 flutter pub get
 open ios/Runner.xcworkspace
 ```
 
-In Xcode:
+Select an Apple team and a real iPhone. Test all resolution choices because 4K availability, encoding format, thermal behavior, and storage consumption depend on the phone model. Also verify pause/resume audio continuity and lock/background upload behavior on device; simulators cannot validate these reliably.
 
-1. Select the `Runner` target.
-2. Choose an Apple development team under Signing & Capabilities.
-3. Replace the bundle identifier if necessary.
-4. Connect an iPhone running iOS 16 or later.
-5. Build and run the `Runner` scheme.
+## Production notes
 
-The first recording requests Camera, Microphone, and Photos permissions. To test background transfer, record a video, start uploading, lock the phone, and verify the server's `parts` directory continues to receive files.
+- The current Linux server writes to one filesystem. Before thousands of users, decide storage quota, retention, backup, monitoring, and whether object storage is preferable.
+- iOS deliberately stops relaunching background work after the user force-quits the app; reopening it reconciles and resumes the durable upload session. Normal screen locking, app switching, suspension, network loss, and process reclamation use the native background engine.
+- Remove `NSAllowsArbitraryLoads` after the lab HTTPS endpoint is available.
+- Perform long 4K recordings on the oldest supported iPhone and monitor heat, battery, free space, resulting bitrate, audio, and app termination recovery.
+- Add rate limiting, audit logs, database-backed users/roles, and a retention policy before a broader internal rollout.
 
-## Verification commands
+## Project layout
 
-```bash
-flutter analyze
-flutter test
-
-cd server
-npm test
+```text
+lib/                 Flutter application and SQLite upload state machine
+ios/Runner/          iOS host, entitlements, and background URLSession bridge
+server/              Node.js/Express multipart upload server
+test/                Flutter localization tests
 ```
-
-The server test performs a complete login, multipart upload, resume-state query, assembly, and SHA-256 verification.
-
-## Before an internal production deployment
-
-The demo deliberately keeps infrastructure simple. Before serving thousands of users:
-
-- Put the API behind a valid HTTPS certificate and remove the temporary arbitrary HTTP allowance from `Info.plist`.
-- Replace the single environment-variable demo account with a real user database and password hashing.
-- Store secrets outside `docker-compose.yml`.
-- Add NUS authentication/SSO if required.
-- Set storage quotas, retention, backups, monitoring, and disk-space alerts.
-- Add rate limits and audit logs.
-- Run long-duration tests on representative iPhone models.
-- Configure TestFlight, MDM, or the NUS-approved internal distribution method.
-
-## Current platform scope
-
-Only the iOS host project is generated in this demo. The Flutter application logic is structured so an Android host and CameraX/background-upload implementation can be added later without rewriting the user flow.

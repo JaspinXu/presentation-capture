@@ -69,6 +69,26 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
+  Future<void> _socialSignIn(Future<bool> Function() action) async {
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(
+      'serverUrl',
+      _server.text.trim().replaceAll(RegExp(r'/$'), ''),
+    );
+    final success = await action();
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (success) {
+      widget.onSignedIn();
+    } else {
+      setState(() => _error = context.strings.get('socialLoginFailed'));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -138,6 +158,36 @@ class _LoginPageState extends State<LoginPage> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Text(context.strings.get('signIn')),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(context.strings.get('or')),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () =>
+                              _socialSignIn(widget.authService.signInWithApple),
+                    icon: const Icon(Icons.apple),
+                    label: Text(context.strings.get('continueApple')),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _socialSignIn(
+                            widget.authService.signInWithGoogle,
+                          ),
+                    icon: const Icon(Icons.g_mobiledata, size: 28),
+                    label: Text(context.strings.get('continueGoogle')),
                   ),
                   const SizedBox(height: 12),
                   SegmentedButton<String>(

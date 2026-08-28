@@ -25,9 +25,55 @@ class BackgroundUploadBridge {
     return scheduled ?? false;
   }
 
+  Future<bool> startSession({
+    required String sessionId,
+    required String sourcePath,
+    required int fileSize,
+    required int partSize,
+    required int totalParts,
+    required Uri partUrlTemplate,
+    required Uri finalizeUrl,
+    required String finalizeBody,
+    required Map<String, String> headers,
+    required bool allowsCellular,
+    bool resetFailed = false,
+  }) async {
+    if (!Platform.isIOS) return false;
+    final started = await _channel.invokeMethod<bool>('startUploadSession', {
+      'sessionId': sessionId,
+      'sourcePath': sourcePath,
+      'fileSize': fileSize,
+      'partSize': partSize,
+      'totalParts': totalParts,
+      'partUrlTemplate': partUrlTemplate.toString(),
+      'finalizeUrl': finalizeUrl.toString(),
+      'finalizeBody': finalizeBody,
+      'headers': headers,
+      'allowsCellular': allowsCellular,
+      'resetFailed': resetFailed,
+    });
+    return started ?? false;
+  }
+
   Future<Set<String>> activeTaskIds() async {
     if (!Platform.isIOS) return <String>{};
     final ids = await _channel.invokeListMethod<String>('activeTaskIds');
     return (ids ?? const <String>[]).toSet();
+  }
+
+  Future<List<Map<String, Object?>>> pendingEvents() async {
+    if (!Platform.isIOS) return const [];
+    final events = await _channel.invokeListMethod<Object?>('pendingEvents');
+    return (events ?? const <Object?>[])
+        .whereType<Map<Object?, Object?>>()
+        .map(
+          (event) => event.map((key, value) => MapEntry(key.toString(), value)),
+        )
+        .toList();
+  }
+
+  Future<int?> freeDiskBytes() async {
+    if (!Platform.isIOS) return null;
+    return _channel.invokeMethod<int>('freeDiskBytes');
   }
 }

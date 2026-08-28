@@ -75,6 +75,10 @@ class _SettingsPageState extends State<SettingsPage> {
               children: [
                 RadioListTile(value: '720p', title: Text('720p (recommended)')),
                 RadioListTile(value: '1080p', title: Text('1080p')),
+                RadioListTile(
+                  value: '4K',
+                  title: Text('4K (compatible devices)'),
+                ),
               ],
             ),
           ),

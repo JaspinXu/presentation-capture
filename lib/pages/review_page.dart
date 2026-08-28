@@ -3,7 +3,6 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:photo_manager/photo_manager.dart';
 import 'package:video_player/video_player.dart';
 
 import '../l10n/app_strings.dart';
@@ -98,9 +97,6 @@ class _ReviewPageState extends State<ReviewPage> {
     final file = File(widget.draft.localPath);
     if (action == 'delete') {
       if (await file.exists()) await file.delete();
-      if (widget.draft.photoAssetId.isNotEmpty) {
-        await PhotoManager.editor.deleteWithIds([widget.draft.photoAssetId]);
-      }
     } else {
       final digest = await sha256.bind(file.openRead()).first;
       await AppDatabase.instance.save(
@@ -177,7 +173,7 @@ class _ReviewPageState extends State<ReviewPage> {
                       children: [
                         const Icon(Icons.check_circle, color: Colors.green),
                         const SizedBox(width: 8),
-                        Text(context.strings.get('savedPhotos')),
+                        Text(context.strings.get('savedInApp')),
                       ],
                     ),
                     const SizedBox(height: 16),

@@ -6,12 +6,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:photo_manager/photo_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 
 import '../l10n/app_strings.dart';
 import '../models/recorded_draft.dart';
+import '../services/background_upload_bridge.dart';
 import 'review_page.dart';
 
 class RecordPage extends StatefulWidget {
@@ -24,12 +24,14 @@ class RecordPage extends StatefulWidget {
 class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   CameraController? _controller;
   Timer? _timer;
+  final Stopwatch _stopwatch = Stopwatch();
   int _seconds = 0;
   String _resolution = '720p';
   Object? _error;
   bool _stopping = false;
 
   bool get _recording => _controller?.value.isRecordingVideo ?? false;
+  bool get _paused => _controller?.value.isRecordingPaused ?? false;
 
   @override
   void initState() {
@@ -51,13 +53,11 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
         (item) => item.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-      final controller = CameraController(
-        camera,
-        _resolution == '1080p'
-            ? ResolutionPreset.veryHigh
-            : ResolutionPreset.high,
-        enableAudio: true,
-      );
+      final controller = CameraController(camera, switch (_resolution) {
+        '4K' => ResolutionPreset.ultraHigh,
+        '1080p' => ResolutionPreset.veryHigh,
+        _ => ResolutionPreset.high,
+      }, enableAudio: true);
       await controller.initialize();
       if (!mounted) return;
       setState(() => _controller = controller);
@@ -78,14 +78,59 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   Future<void> _startRecording() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    await controller.lockCaptureOrientation();
+    final freeBytes = await BackgroundUploadBridge().freeDiskBytes();
+    final recommended = _resolution == '4K'
+        ? 4 * 1024 * 1024 * 1024
+        : 1024 * 1024 * 1024;
+    if (freeBytes != null && freeBytes < recommended) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text(context.strings.get('lowStorage')),
+          content: Text(context.strings.get('lowStorageMessage')),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: Text(context.strings.get('cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: Text(context.strings.get('recordAnyway')),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || proceed != true) return;
+    }
+    await controller.lockCaptureOrientation(DeviceOrientation.landscapeLeft);
     await controller.prepareForVideoRecording();
     await controller.startVideoRecording();
     _seconds = 0;
+    _stopwatch
+      ..reset()
+      ..start();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() => _seconds++);
+      if (mounted) setState(() => _seconds = _stopwatch.elapsed.inSeconds);
     });
     setState(() {});
+  }
+
+  Future<void> _togglePause() async {
+    final controller = _controller;
+    if (controller == null || !_recording || _stopping) return;
+    try {
+      if (_paused) {
+        await controller.resumeVideoRecording();
+        _stopwatch.start();
+      } else {
+        await controller.pauseVideoRecording();
+        _stopwatch.stop();
+      }
+      if (mounted) setState(() {});
+    } catch (error) {
+      if (mounted) setState(() => _error = error);
+    }
   }
 
   Future<void> _stopRecording() async {
@@ -93,6 +138,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
     if (controller == null || !_recording || _stopping) return;
     _stopping = true;
     _timer?.cancel();
+    _stopwatch.stop();
     try {
       final captured = await controller.stopVideoRecording();
       final documents = await getApplicationDocumentsDirectory();
@@ -102,16 +148,6 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
       final destination = File(p.join(directory.path, '$id.mp4'));
       await File(captured.path).copy(destination.path);
 
-      var photoAssetId = '';
-      final permission = await PhotoManager.requestPermissionExtend();
-      if (permission.isAuth) {
-        final asset = await PhotoManager.editor.saveVideo(
-          destination,
-          title: 'NUS_Presentation_$id.mp4',
-          creationDate: DateTime.now(),
-        );
-        photoAssetId = asset.id;
-      }
       if (!mounted) return;
       await Navigator.pushReplacement(
         context,
@@ -120,7 +156,6 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
             draft: RecordedDraft(
               id: id,
               localPath: destination.path,
-              photoAssetId: photoAssetId,
               recordedAt: DateTime.now(),
               durationSeconds: _seconds,
               resolution: _resolution,
@@ -193,6 +228,21 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
                 icon: const Icon(Icons.close),
               ),
             ),
+            if (_recording)
+              Positioned(
+                left: 28,
+                top: 0,
+                bottom: 0,
+                child: Center(
+                  child: FilledButton.tonalIcon(
+                    onPressed: _stopping ? null : _togglePause,
+                    icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                    label: Text(
+                      context.strings.get(_paused ? 'resume' : 'pause'),
+                    ),
+                  ),
+                ),
+              ),
             Positioned(
               top: 20,
               right: 24,

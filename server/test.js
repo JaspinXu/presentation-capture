@@ -29,7 +29,10 @@ test('accepts, resumes, and assembles a multipart video upload', async () => {
   assert.equal(login.status, 200);
 
   const id = '2f4ba129-bd51-4d76-b43a-5978802b7cf4';
-  const video = Buffer.from('continuous-presentation-video');
+  const video = Buffer.concat([
+    Buffer.alloc(1024, 7),
+    Buffer.from('continuous-presentation-video'),
+  ]);
   const sha256 = crypto.createHash('sha256').update(video).digest('hex');
   const auth = { authorization: 'Bearer test-token' };
 
@@ -43,13 +46,24 @@ test('accepts, resumes, and assembles a multipart video upload', async () => {
   const initialized = await fetch(`${baseUrl}/api/videos/${id}/upload/init`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ partSize: 16, totalParts: 2 }),
+    body: JSON.stringify({
+      uploadSessionId: id,
+      partSize: 1024,
+      totalParts: 2,
+      fileSize: video.length,
+    }),
   });
   assert.equal(initialized.status, 200);
 
-  for (const [part, body] of [video.subarray(0, 16), video.subarray(16)].entries()) {
+  for (const [part, body] of [video.subarray(0, 1024), video.subarray(1024)].entries()) {
     const uploaded = await fetch(`${baseUrl}/api/videos/${id}/parts/${part}`, {
-      method: 'PUT', headers: { ...auth, 'content-type': 'application/octet-stream' }, body,
+      method: 'PUT',
+      headers: {
+        ...auth,
+        'content-type': 'application/octet-stream',
+        'x-part-sha256': crypto.createHash('sha256').update(body).digest('hex'),
+      },
+      body,
     });
     assert.equal(uploaded.status, 201);
   }
@@ -64,4 +78,21 @@ test('accepts, resumes, and assembles a multipart video upload', async () => {
   });
   assert.equal(completed.status, 200);
   assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'final.mp4')), video);
+
+  const completedAgain = await fetch(`${baseUrl}/api/videos/${id}/upload/complete`, {
+    method: 'POST',
+    headers: { ...auth, 'content-type': 'application/json' },
+    body: JSON.stringify({ totalParts: 2, sha256 }),
+  });
+  assert.equal(completedAgain.status, 200);
+});
+
+test('does not accept social tokens when the provider is unconfigured', async () => {
+  const response = await fetch(`${baseUrl}/api/auth/social`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ provider: 'google', idToken: 'not-a-real-token' }),
+  });
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'google_not_configured');
 });

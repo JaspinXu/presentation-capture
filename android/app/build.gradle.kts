@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "sg.edu.nus.nus_presentation_capture"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

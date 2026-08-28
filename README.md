@@ -134,8 +134,8 @@ The server test covers login, idempotent multipart initialization, per-part chec
 ### One-time setup
 
 1. Install Android Studio. In **Settings > Android SDK**, place the SDK on `G:\Android\Sdk` if you want to avoid using C:.
-2. Install Android SDK Platform 35 or newer, Android SDK Build-Tools, Platform-Tools, Command-line Tools, and Android Emulator.
-3. In **Device Manager**, create a Pixel 7/8 emulator using API 35 or newer. Enable a virtual-scene camera or webcam.
+2. Install Android SDK Platform 37, Android SDK Build-Tools, Platform-Tools, Command-line Tools, and Android Emulator.
+3. In **Device Manager**, create a Pixel 7/8 emulator using API 35 or newer. Enable a virtual-scene camera or webcam. The app compiles against SDK 37 but still runs on older supported Android versions.
 4. To keep emulator images on G:, set the user environment variable `ANDROID_AVD_HOME=G:\Android\avd` before creating the emulator.
 5. Configure Flutter and accept Android licences:
 

@@ -129,6 +129,10 @@ cd G:\presentation-capture
 
 The server test covers login, idempotent multipart initialization, per-part checksum validation, resume-state lookup, streamed assembly, and final SHA-256 verification.
 
+### Try the APK without installing the Android SDK
+
+Every successful GitHub Actions run publishes a 14-day `presentation-capture-android-debug` artifact. On GitHub, open **Actions > CI**, select the latest successful run on `codex/android-app`, download the artifact at the bottom of the summary, unzip it, and copy `app-debug.apk` to an Android phone. Allow the phone's file manager to install apps from that source, then open the app and grant camera/microphone permissions. The Windows upload server must be reachable through the PC's LAN IP; `10.0.2.2` only works inside the Android emulator.
+
 ## Android Studio UI validation on Windows
 
 ### One-time setup

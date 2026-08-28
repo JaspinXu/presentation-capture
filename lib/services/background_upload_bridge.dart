@@ -14,7 +14,7 @@ class BackgroundUploadBridge {
     required Map<String, String> headers,
     required bool allowsCellular,
   }) async {
-    if (!Platform.isIOS) return false;
+    if (!Platform.isIOS && !Platform.isAndroid) return false;
     final scheduled = await _channel.invokeMethod<bool>('scheduleUpload', {
       'taskId': taskId,
       'filePath': filePath,
@@ -32,13 +32,14 @@ class BackgroundUploadBridge {
     required int partSize,
     required int totalParts,
     required Uri partUrlTemplate,
+    required Uri partsUrl,
     required Uri finalizeUrl,
     required String finalizeBody,
     required Map<String, String> headers,
     required bool allowsCellular,
     bool resetFailed = false,
   }) async {
-    if (!Platform.isIOS) return false;
+    if (!Platform.isIOS && !Platform.isAndroid) return false;
     final started = await _channel.invokeMethod<bool>('startUploadSession', {
       'sessionId': sessionId,
       'sourcePath': sourcePath,
@@ -46,6 +47,7 @@ class BackgroundUploadBridge {
       'partSize': partSize,
       'totalParts': totalParts,
       'partUrlTemplate': partUrlTemplate.toString(),
+      'partsUrl': partsUrl.toString(),
       'finalizeUrl': finalizeUrl.toString(),
       'finalizeBody': finalizeBody,
       'headers': headers,
@@ -56,13 +58,13 @@ class BackgroundUploadBridge {
   }
 
   Future<Set<String>> activeTaskIds() async {
-    if (!Platform.isIOS) return <String>{};
+    if (!Platform.isIOS && !Platform.isAndroid) return <String>{};
     final ids = await _channel.invokeListMethod<String>('activeTaskIds');
     return (ids ?? const <String>[]).toSet();
   }
 
   Future<List<Map<String, Object?>>> pendingEvents() async {
-    if (!Platform.isIOS) return const [];
+    if (!Platform.isIOS && !Platform.isAndroid) return const [];
     final events = await _channel.invokeListMethod<Object?>('pendingEvents');
     return (events ?? const <Object?>[])
         .whereType<Map<Object?, Object?>>()
@@ -73,7 +75,7 @@ class BackgroundUploadBridge {
   }
 
   Future<int?> freeDiskBytes() async {
-    if (!Platform.isIOS) return null;
+    if (!Platform.isIOS && !Platform.isAndroid) return null;
     return _channel.invokeMethod<int>('freeDiskBytes');
   }
 }

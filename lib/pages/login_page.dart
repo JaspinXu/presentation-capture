@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_strings.dart';
 import '../services/auth_service.dart';
+import '../services/server_config.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({
@@ -34,7 +35,7 @@ class _LoginPageState extends State<LoginPage> {
     super.initState();
     SharedPreferences.getInstance().then((preferences) {
       _server.text =
-          preferences.getString('serverUrl') ?? 'http://localhost:8080';
+          preferences.getString('serverUrl') ?? ServerConfig.defaultUrl;
     });
   }
 
@@ -54,7 +55,7 @@ class _LoginPageState extends State<LoginPage> {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       'serverUrl',
-      _server.text.trim().replaceAll(RegExp(r'/$'), ''),
+      ServerConfig.normalize(_server.text),
     );
     final success = await widget.authService.signIn(
       _account.text.trim(),
@@ -77,7 +78,7 @@ class _LoginPageState extends State<LoginPage> {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       'serverUrl',
-      _server.text.trim().replaceAll(RegExp(r'/$'), ''),
+      ServerConfig.normalize(_server.text),
     );
     final success = await action();
     if (!mounted) return;

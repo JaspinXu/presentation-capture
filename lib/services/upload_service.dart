@@ -14,6 +14,7 @@ import '../models/video_record.dart';
 import 'app_database.dart';
 import 'auth_service.dart';
 import 'background_upload_bridge.dart';
+import 'server_config.dart';
 
 class UploadService {
   UploadService({AuthService? authService})
@@ -28,7 +29,7 @@ class UploadService {
   Future<Uri> _uri(String path) async {
     final preferences = await SharedPreferences.getInstance();
     final serverUrl =
-        preferences.getString('serverUrl') ?? 'http://localhost:8080';
+        preferences.getString('serverUrl') ?? ServerConfig.defaultUrl;
     return Uri.parse('$serverUrl$path');
   }
 
@@ -213,7 +214,7 @@ class UploadService {
     UploadSession session, {
     bool force = false,
   }) async {
-    if (Platform.isIOS) {
+    if (Platform.isIOS || Platform.isAndroid) {
       final preferences = await SharedPreferences.getInstance();
       final started = await _bridge.startSession(
         sessionId: session.id,
@@ -222,6 +223,7 @@ class UploadService {
         partSize: session.partSize,
         totalParts: session.totalParts,
         partUrlTemplate: await _uri('/api/videos/${video.id}/parts/__PART__'),
+        partsUrl: await _uri('/api/videos/${video.id}/parts'),
         finalizeUrl: await _uri('/api/videos/${video.id}/upload/complete'),
         finalizeBody: jsonEncode({
           'uploadSessionId': session.id,
@@ -233,7 +235,7 @@ class UploadService {
         resetFailed: force,
       );
       if (!started) {
-        throw StateError('The iOS background upload session could not start');
+        throw StateError('The background upload session could not start');
       }
       return;
     }

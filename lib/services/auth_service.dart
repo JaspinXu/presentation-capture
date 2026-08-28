@@ -1,10 +1,13 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sign_in_with_apple/sign_in_with_apple.dart';
+
+import 'server_config.dart';
 
 class AuthService {
   static const _storage = FlutterSecureStorage();
@@ -17,7 +20,7 @@ class AuthService {
   Future<Uri> _endpoint(String path) async {
     final preferences = await SharedPreferences.getInstance();
     final serverUrl =
-        preferences.getString('serverUrl') ?? 'http://localhost:8080';
+        preferences.getString('serverUrl') ?? ServerConfig.defaultUrl;
     return Uri.parse('$serverUrl$path');
   }
 
@@ -25,39 +28,58 @@ class AuthService {
       _exchange('/api/login', {'account': account, 'password': password});
 
   Future<bool> signInWithGoogle() async {
-    const iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
-    const serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-    _googleInitialization ??= GoogleSignIn.instance.initialize(
-      clientId: iosClientId.isEmpty ? null : iosClientId,
-      serverClientId: serverClientId.isEmpty ? null : serverClientId,
-    );
-    await _googleInitialization;
-    final account = await GoogleSignIn.instance.authenticate();
-    final idToken = account.authentication.idToken;
-    if (idToken == null) return false;
-    return _exchange('/api/auth/social', {
-      'provider': 'google',
-      'idToken': idToken,
-    });
+    try {
+      const iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+      const serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+      _googleInitialization ??= GoogleSignIn.instance.initialize(
+        clientId: iosClientId.isEmpty ? null : iosClientId,
+        serverClientId: serverClientId.isEmpty ? null : serverClientId,
+      );
+      await _googleInitialization;
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null) return false;
+      return _exchange('/api/auth/social', {
+        'provider': 'google',
+        'idToken': idToken,
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> signInWithApple() async {
-    if (!await SignInWithApple.isAvailable()) return false;
-    final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: const [
-        AppleIDAuthorizationScopes.email,
-        AppleIDAuthorizationScopes.fullName,
-      ],
-    );
-    if (credential.identityToken == null) return false;
-    return _exchange('/api/auth/social', {
-      'provider': 'apple',
-      'idToken': credential.identityToken,
-      'authorizationCode': credential.authorizationCode,
-      'email': credential.email,
-      'givenName': credential.givenName,
-      'familyName': credential.familyName,
-    });
+    try {
+      if (!await SignInWithApple.isAvailable()) return false;
+      const serviceId = String.fromEnvironment('APPLE_SERVICE_ID');
+      const redirectUrl = String.fromEnvironment('APPLE_REDIRECT_URI');
+      if (Platform.isAndroid && (serviceId.isEmpty || redirectUrl.isEmpty)) {
+        return false;
+      }
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+        webAuthenticationOptions: Platform.isAndroid
+            ? WebAuthenticationOptions(
+                clientId: serviceId,
+                redirectUri: Uri.parse(redirectUrl),
+              )
+            : null,
+      );
+      if (credential.identityToken == null) return false;
+      return _exchange('/api/auth/social', {
+        'provider': 'apple',
+        'idToken': credential.identityToken,
+        'authorizationCode': credential.authorizationCode,
+        'email': credential.email,
+        'givenName': credential.givenName,
+        'familyName': credential.familyName,
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> _exchange(String path, Map<String, Object?> body) async {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../l10n/app_strings.dart';
+import '../services/server_config.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -29,7 +30,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (!mounted) return;
       setState(() {
         _server.text =
-            preferences.getString('serverUrl') ?? 'http://localhost:8080';
+            preferences.getString('serverUrl') ?? ServerConfig.defaultUrl;
         _resolution = preferences.getString('resolution') ?? '720p';
         _cellular = preferences.getBool('allowCellular') ?? true;
       });
@@ -46,7 +47,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(
       'serverUrl',
-      _server.text.trim().replaceAll(RegExp(r'/$'), ''),
+      ServerConfig.normalize(_server.text),
     );
     await preferences.setString('resolution', _resolution);
     await preferences.setBool('allowCellular', _cellular);

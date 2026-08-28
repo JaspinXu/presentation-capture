@@ -123,105 +123,112 @@ class _ReviewPageState extends State<ReviewPage> {
       ? context.strings.get('required')
       : null;
 
+  Widget _videoPreview() => ColoredBox(
+    color: Colors.black,
+    child: Center(
+      child: _video.value.isInitialized
+          ? GestureDetector(
+              onTap: () => setState(() {
+                _video.value.isPlaying ? _video.pause() : _video.play();
+              }),
+              child: AspectRatio(
+                aspectRatio: _video.value.aspectRatio,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    VideoPlayer(_video),
+                    if (!_video.value.isPlaying)
+                      const Icon(
+                        Icons.play_circle_fill,
+                        size: 72,
+                        color: Colors.white70,
+                      ),
+                  ],
+                ),
+              ),
+            )
+          : const CircularProgressIndicator(),
+    ),
+  );
+
+  Widget _metadataForm() => Form(
+    key: _formKey,
+    child: ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.green),
+            const SizedBox(width: 8),
+            Flexible(child: Text(context.strings.get('savedInApp'))),
+          ],
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _title,
+          decoration: InputDecoration(labelText: context.strings.get('title')),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _experiment,
+          validator: _required,
+          decoration: InputDecoration(
+            labelText: context.strings.get('experimentId'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _participant,
+          validator: _required,
+          decoration: InputDecoration(
+            labelText: context.strings.get('participantId'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _notes,
+          maxLines: 3,
+          decoration: InputDecoration(labelText: context.strings.get('notes')),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: const Icon(Icons.cloud_upload),
+          label: Text(context.strings.get('save')),
+        ),
+        TextButton(
+          onPressed: _saving ? null : _retake,
+          child: Text(context.strings.get('retake')),
+        ),
+      ],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text(context.strings.get('review'))),
       body: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              flex: 3,
-              child: ColoredBox(
-                color: Colors.black,
-                child: Center(
-                  child: _video.value.isInitialized
-                      ? GestureDetector(
-                          onTap: () => setState(() {
-                            _video.value.isPlaying
-                                ? _video.pause()
-                                : _video.play();
-                          }),
-                          child: AspectRatio(
-                            aspectRatio: _video.value.aspectRatio,
-                            child: Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                VideoPlayer(_video),
-                                if (!_video.value.isPlaying)
-                                  const Icon(
-                                    Icons.play_circle_fill,
-                                    size: 72,
-                                    color: Colors.white70,
-                                  ),
-                              ],
-                            ),
-                          ),
-                        )
-                      : const CircularProgressIndicator(),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth >= 700) {
+              return Row(
+                children: [
+                  Expanded(flex: 3, child: _videoPreview()),
+                  Expanded(flex: 2, child: _metadataForm()),
+                ],
+              );
+            }
+            return Column(
+              children: [
+                SizedBox(
+                  height: constraints.maxHeight * 0.38,
+                  child: _videoPreview(),
                 ),
-              ),
-            ),
-            Expanded(
-              flex: 2,
-              child: Form(
-                key: _formKey,
-                child: ListView(
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green),
-                        const SizedBox(width: 8),
-                        Text(context.strings.get('savedInApp')),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _title,
-                      decoration: InputDecoration(
-                        labelText: context.strings.get('title'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _experiment,
-                      validator: _required,
-                      decoration: InputDecoration(
-                        labelText: context.strings.get('experimentId'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _participant,
-                      validator: _required,
-                      decoration: InputDecoration(
-                        labelText: context.strings.get('participantId'),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _notes,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        labelText: context.strings.get('notes'),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    FilledButton.icon(
-                      onPressed: _saving ? null : _save,
-                      icon: const Icon(Icons.cloud_upload),
-                      label: Text(context.strings.get('save')),
-                    ),
-                    TextButton(
-                      onPressed: _saving ? null : _retake,
-                      child: Text(context.strings.get('retake')),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+                Expanded(child: _metadataForm()),
+              ],
+            );
+          },
         ),
       ),
     );

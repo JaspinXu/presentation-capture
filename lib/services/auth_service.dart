@@ -39,7 +39,7 @@ class AuthService {
       final account = await GoogleSignIn.instance.authenticate();
       final idToken = account.authentication.idToken;
       if (idToken == null) return false;
-      return _exchange('/api/auth/social', {
+      return await _exchange('/api/auth/social', {
         'provider': 'google',
         'idToken': idToken,
       });
@@ -69,7 +69,7 @@ class AuthService {
             : null,
       );
       if (credential.identityToken == null) return false;
-      return _exchange('/api/auth/social', {
+      return await _exchange('/api/auth/social', {
         'provider': 'apple',
         'idToken': credential.identityToken,
         'authorizationCode': credential.authorizationCode,

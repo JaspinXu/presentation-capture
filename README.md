@@ -122,10 +122,13 @@ The server test covers login, idempotent multipart initialization, per-part chec
 
 ## iPhone device validation
 
-iOS compilation and real camera validation still require macOS/Xcode, either a borrowed Mac or a CI/macOS cloud runner. On the Mac:
+If this is your first Mac, follow the complete Chinese walkthrough: [MacBook 上从零运行 iOS 版](docs/MAC_IOS_SETUP_ZH.md). It covers Xcode, Flutter, VS Code, Simulator, Docker, Xcode's UI, hot reload, signing, and physical-iPhone validation.
+
+Quick start after the Mac is configured:
 
 ```bash
 flutter pub get
+./tool/verify_macos.sh
 open ios/Runner.xcworkspace
 ```
 

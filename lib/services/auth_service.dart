@@ -25,39 +25,47 @@ class AuthService {
       _exchange('/api/login', {'account': account, 'password': password});
 
   Future<bool> signInWithGoogle() async {
-    const iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
-    const serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
-    _googleInitialization ??= GoogleSignIn.instance.initialize(
-      clientId: iosClientId.isEmpty ? null : iosClientId,
-      serverClientId: serverClientId.isEmpty ? null : serverClientId,
-    );
-    await _googleInitialization;
-    final account = await GoogleSignIn.instance.authenticate();
-    final idToken = account.authentication.idToken;
-    if (idToken == null) return false;
-    return _exchange('/api/auth/social', {
-      'provider': 'google',
-      'idToken': idToken,
-    });
+    try {
+      const iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
+      const serverClientId = String.fromEnvironment('GOOGLE_SERVER_CLIENT_ID');
+      _googleInitialization ??= GoogleSignIn.instance.initialize(
+        clientId: iosClientId.isEmpty ? null : iosClientId,
+        serverClientId: serverClientId.isEmpty ? null : serverClientId,
+      );
+      await _googleInitialization;
+      final account = await GoogleSignIn.instance.authenticate();
+      final idToken = account.authentication.idToken;
+      if (idToken == null) return false;
+      return await _exchange('/api/auth/social', {
+        'provider': 'google',
+        'idToken': idToken,
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> signInWithApple() async {
-    if (!await SignInWithApple.isAvailable()) return false;
-    final credential = await SignInWithApple.getAppleIDCredential(
-      scopes: const [
-        AppleIDAuthorizationScopes.email,
-        AppleIDAuthorizationScopes.fullName,
-      ],
-    );
-    if (credential.identityToken == null) return false;
-    return _exchange('/api/auth/social', {
-      'provider': 'apple',
-      'idToken': credential.identityToken,
-      'authorizationCode': credential.authorizationCode,
-      'email': credential.email,
-      'givenName': credential.givenName,
-      'familyName': credential.familyName,
-    });
+    try {
+      if (!await SignInWithApple.isAvailable()) return false;
+      final credential = await SignInWithApple.getAppleIDCredential(
+        scopes: const [
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      if (credential.identityToken == null) return false;
+      return await _exchange('/api/auth/social', {
+        'provider': 'apple',
+        'idToken': credential.identityToken,
+        'authorizationCode': credential.authorizationCode,
+        'email': credential.email,
+        'givenName': credential.givenName,
+        'familyName': credential.familyName,
+      });
+    } catch (_) {
+      return false;
+    }
   }
 
   Future<bool> _exchange(String path, Map<String, Object?> body) async {

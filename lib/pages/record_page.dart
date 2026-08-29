@@ -29,6 +29,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   String _resolution = '720p';
   Object? _error;
   bool _stopping = false;
+  bool _resolutionFallback = false;
 
   bool get _recording => _controller?.value.isRecordingVideo ?? false;
   bool get _paused => _controller?.value.isRecordingPaused ?? false;
@@ -53,12 +54,39 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
         (item) => item.lensDirection == CameraLensDirection.back,
         orElse: () => cameras.first,
       );
-      final controller = CameraController(camera, switch (_resolution) {
-        '4K' => ResolutionPreset.ultraHigh,
-        '1080p' => ResolutionPreset.veryHigh,
-        _ => ResolutionPreset.high,
-      }, enableAudio: true);
-      await controller.initialize();
+      final requestedResolution = _resolution;
+      final candidates = switch (requestedResolution) {
+        '4K' => const [
+          ('4K', ResolutionPreset.ultraHigh),
+          ('1080p', ResolutionPreset.veryHigh),
+          ('720p', ResolutionPreset.high),
+        ],
+        '1080p' => const [
+          ('1080p', ResolutionPreset.veryHigh),
+          ('720p', ResolutionPreset.high),
+        ],
+        _ => const [('720p', ResolutionPreset.high)],
+      };
+      CameraController? controller;
+      Object? lastError;
+      for (final candidate in candidates) {
+        final attempt = CameraController(
+          camera,
+          candidate.$2,
+          enableAudio: true,
+        );
+        try {
+          await attempt.initialize();
+          controller = attempt;
+          _resolution = candidate.$1;
+          break;
+        } catch (error) {
+          lastError = error;
+          await attempt.dispose();
+        }
+      }
+      if (controller == null) throw lastError ?? StateError('No camera mode');
+      _resolutionFallback = _resolution != requestedResolution;
       if (!mounted) return;
       setState(() => _controller = controller);
     } catch (error) {
@@ -103,7 +131,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
       );
       if (!mounted || proceed != true) return;
     }
-    await controller.lockCaptureOrientation(DeviceOrientation.landscapeLeft);
+    await controller.lockCaptureOrientation();
     await controller.prepareForVideoRecording();
     await controller.startVideoRecording();
     _seconds = 0;
@@ -228,6 +256,30 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
                 icon: const Icon(Icons.close),
               ),
             ),
+            if (_resolutionFallback)
+              Positioned(
+                bottom: 12,
+                left: 16,
+                right: 16,
+                child: Center(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.amber.shade800.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: Text(
+                        context.strings.get('resolutionFallback'),
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             if (_recording)
               Positioned(
                 left: 28,

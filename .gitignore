@@ -10,6 +10,7 @@
 .history
 .svn/
 .swiftpm/
+ios/**/xcshareddata/swiftpm/
 migrate_working_dir/
 
 # IntelliJ related
@@ -35,6 +36,7 @@ server/data/*
 .pub/
 /build/
 /coverage/
+/ios/Flutter/GoogleAuth.xcconfig
 
 # Symbolication related
 app.*.symbols

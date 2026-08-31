@@ -6,14 +6,16 @@ This project borrows Stera's durable-session and reconciliation ideas, but delib
 
 ## Current feature set
 
-- Rear-camera landscape recording with microphone audio
+- Rear-camera portrait or landscape recording with microphone audio and orientation fixed from the device position at recording start
 - 720p, 1080p, and 4K presets (the camera plugin chooses the best supported format at or below the requested preset)
 - Pause and resume within one MP4 recording
 - App-private local storage; recordings are not copied to iPhone Photos
 - Local review and playback
 - Experiment ID, participant ID, optional title, and notes
 - Lab account/password login for demo and development
-- Configurable Sign in with Apple and Google Sign-In
+- Google Sign-In as the only user-facing authentication method
+- Required PPT, PPTX, or PDF selection for each uploaded recording
+- Native iOS audio extraction to M4A without creating another full video copy
 - Durable SQLite `upload_sessions` and `upload_parts` state
 - Frozen 16 MiB multipart upload plan with a three-part staging window
 - Native iOS background upload engine with SQLite/WAL journal, automatic sliding-window refill, server reconciliation, retry backoff, and SHA-256 checks
@@ -25,12 +27,13 @@ This project borrows Stera's durable-session and reconciliation ideas, but delib
 ```text
 Flutter camera (H.264/HEVC MP4 + microphone)
   -> app Documents/recordings/<video-id>.mp4
-  -> SQLite videos + upload_sessions + upload_parts
+  -> app-private final.mp4 + audio.m4a + presentation.ppt/.pptx/.pdf
+  -> SQLite videos + per-asset upload sessions and parts
   -> native iOS SQLite journal + at most 3 temporary 16 MiB chunks
   -> background URLSession with automatic window refill
   -> NUS Linux Express API
-  -> parts/<part-number>
-  -> streamed final.mp4 assembly + whole-file SHA-256 verification
+  -> per-asset parts/<part-number>
+  -> streamed final.mp4, audio.m4a, and presentation assembly + SHA-256 verification
 ```
 
 The server's completed-parts list is authoritative. After a restart or network interruption, the client compares local SQLite state, the native SQLite journal, active iOS tasks, and the server before scheduling missing parts again. While Flutter is suspended, Swift creates the next part only when a window slot becomes available and directly finalizes the upload after the last part. The app never prepares a second full copy of a 4K video.
@@ -52,7 +55,7 @@ cd G:\presentation-capture\server
 docker compose up --build
 ```
 
-Demo credentials:
+The password endpoint and these credentials are retained for automated server tests only; they are not shown in the app UI:
 
 ```text
 Account:  demo@nus.edu.sg
@@ -61,22 +64,13 @@ Password: demo1234
 
 For a physical iPhone, set the app's server URL to the computer's LAN address, such as `http://192.168.1.20:8080`. `localhost` on the phone means the phone itself.
 
-## Apple and Google login configuration
+## Google login configuration
 
-Both social-login buttons are implemented, but provider credentials cannot be committed to the repository. Until the following configuration is supplied, the lab account/password path remains usable.
+Google Sign-In is the only user-facing authentication method. Its OAuth client IDs cannot be invented by the app and are not committed to the repository. The demo password endpoint remains server-side for automated development tests only.
 
-### Apple
-
-1. Use the bundle ID `sg.edu.nus.nusPresentationCapture`, or replace it consistently with the lab's App ID.
-2. Enable **Sign in with Apple** for that App ID in the Apple Developer portal.
-3. Keep `Runner/Runner.entitlements` attached to all Runner build configurations.
-4. Set the server variable `APPLE_CLIENT_IDS` to the allowed bundle ID(s), comma-separated.
-
-### Google
-
-1. Create an OAuth iOS client for the final bundle ID in Google Cloud Console.
-2. Add its reversed client-ID URL scheme to the Runner target in Xcode. A downloaded `GoogleService-Info.plist` can be used for the same configuration, but do not commit secrets unintentionally.
-3. Build with the IDs when the plist does not provide them:
+1. Create an OAuth iOS client for the active bundle ID in Google Cloud Console. The current personal Debug ID is `com.jaspinxu.presentationcapture.dev`; the formal Release ID remains `sg.edu.nus.nusPresentationCapture`.
+2. Copy `ios/Flutter/GoogleAuth.xcconfig.example` to `ios/Flutter/GoogleAuth.xcconfig` and fill the iOS client ID, backend/web client ID, and reversed iOS client ID. The real file is ignored by Git and is injected into `Info.plist` at build time.
+3. Alternatively, build with Dart client IDs, but the reversed URL scheme must still be supplied to Xcode:
 
 ```bash
 flutter run \
@@ -84,9 +78,9 @@ flutter run \
   --dart-define=GOOGLE_SERVER_CLIENT_ID=YOUR_SERVER_CLIENT_ID
 ```
 
-4. Set the server variable `GOOGLE_CLIENT_IDS` to all accepted token audiences, comma-separated.
+4. Set the server variable `GOOGLE_CLIENT_IDS` to the backend/web client ID and restart Docker. Google login cannot complete until both iOS and server configuration are present.
 
-The server verifies Apple and Google ID-token signatures, issuer, expiry, and audience against the providers' remote public keys before issuing its own 30-day signed session token.
+The server verifies Google ID-token signatures, issuer, expiry, and audience against Google's public keys before issuing its own 30-day signed session token.
 
 ## Server environment variables
 
@@ -95,14 +89,13 @@ PORT=8080
 DATA_DIR=/data
 AUTH_SECRET=<long random secret>
 GOOGLE_CLIENT_IDS=<comma-separated OAuth client IDs>
-APPLE_CLIENT_IDS=<comma-separated Apple bundle/service IDs>
 ENABLE_DEMO_LOGIN=true
 DEMO_ACCOUNT=demo@nus.edu.sg
 DEMO_PASSWORD=demo1234
 DEMO_TOKEN=<development token>
 ```
 
-For deployment, set `ENABLE_DEMO_LOGIN=false`, use HTTPS, and replace every default secret. Uploaded files are written to `DATA_DIR/<video-id>/final.mp4` with metadata and parts beside them.
+For deployment, set `ENABLE_DEMO_LOGIN=false`, use HTTPS, and replace every default secret. Each completed bundle is written to `DATA_DIR/<video-id>/final.mp4`, `audio.m4a`, and `presentation.<ppt|pptx|pdf>`.
 
 ## Verification on this Windows computer
 

@@ -31,6 +31,17 @@ class CaptureApp extends StatefulWidget {
 
 class _CaptureAppState extends State<CaptureApp> {
   late Locale _locale = Locale(widget.initialLanguageCode);
+  late Future<bool> _hasSession;
+
+  @override
+  void initState() {
+    super.initState();
+    _hasSession = widget.authService.hasSession();
+  }
+
+  void _refreshSession() {
+    setState(() => _hasSession = widget.authService.hasSession());
+  }
 
   Future<void> _setLocale(String languageCode) async {
     final preferences = await SharedPreferences.getInstance();
@@ -55,7 +66,7 @@ class _CaptureAppState extends State<CaptureApp> {
           ),
         ),
         home: FutureBuilder<bool>(
-          future: widget.authService.hasSession(),
+          future: _hasSession,
           builder: (context, snapshot) {
             if (!snapshot.hasData) {
               return const Scaffold(
@@ -67,12 +78,12 @@ class _CaptureAppState extends State<CaptureApp> {
                 authService: widget.authService,
                 languageCode: _locale.languageCode,
                 onLanguageChanged: _setLocale,
-                onSignedOut: () => setState(() {}),
+                onSignedOut: _refreshSession,
               );
             }
             return LoginPage(
               authService: widget.authService,
-              onSignedIn: () => setState(() {}),
+              onSignedIn: _refreshSession,
               languageCode: _locale.languageCode,
               onLanguageChanged: _setLocale,
             );

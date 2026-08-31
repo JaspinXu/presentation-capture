@@ -16,7 +16,7 @@
 - **GitHub Desktop**：如果暂时不熟悉 Git 命令，可用它登录 GitHub 并克隆 private repository。
 - **CocoaPods**：当前项目使用 Flutter 的 Swift Package Manager，不需要为了第一次运行专门安装。以后某个新增插件只支持 CocoaPods，或者 `flutter doctor` 明确提示时再安装。
 
-不需要安装 Android Studio，也不需要先购买 Apple Developer Program。iOS 模拟器不需要代码签名；配置正式 Apple 登录、真机长期分发和 TestFlight 时才需要进一步处理开发者团队和证书。
+不需要安装 Android Studio，也不需要先购买 Apple Developer Program。iOS 模拟器不需要代码签名；真机长期分发和 TestFlight 时才需要进一步处理开发者团队和证书。
 
 建议至少预留 40 GB 可用空间，因为 Xcode、iOS Simulator runtime、Flutter SDK 和编译缓存都会占用空间。
 
@@ -88,7 +88,7 @@ cd ~/Developer/presentation-capture
 
 ## 5. 启动本地服务器
 
-要使用演示账号进入主页并测试上传，需要先启动服务器。安装并打开 Docker Desktop，然后新开一个 Terminal：
+要验证 Google 登录和上传，需要先启动服务器。安装并打开 Docker Desktop，然后新开一个 Terminal：
 
 ```bash
 cd ~/Developer/presentation-capture/server
@@ -101,7 +101,7 @@ docker compose up --build
 http://localhost:8080
 ```
 
-演示账号：
+以下演示账号仅保留给服务器自动化测试，App UI 不再提供账号密码登录：
 
 ```text
 demo@nus.edu.sg
@@ -132,7 +132,7 @@ flutter run
 flutter run -d DEVICE_ID
 ```
 
-第一次构建会下载和编译插件，等待时间较长是正常的。应用出现后，用演示账号登录，即可检查登录、语言切换、主页、视频列表、设置、720p/1080p/4K 选择和表单 UI。
+第一次构建会下载和编译插件，等待时间较长是正常的。配置 Google OAuth 后即可检查登录、语言切换、主页、视频列表、设置、720p/1080p/4K 选择和表单 UI。
 
 应用运行期间，在 Terminal 中：
 
@@ -168,7 +168,7 @@ open ios/Runner.xcworkspace
 模拟器适合验证：
 
 - 中英文 UI、布局、导航和表单
-- 演示账号登录和本地服务器连接
+- Google 登录 UI 和本地服务器连接（完整登录需要 OAuth 配置）
 - 设置持久化和本地数据库的普通流程
 - 不依赖真实摄像头的视频列表与上传状态界面
 
@@ -191,7 +191,7 @@ open ios/Runner.xcworkspace
 5. 在 iPhone 的 **设置 > 隐私与安全性 > 开发者模式** 中启用 Developer Mode，并按提示重启。
 6. 点击 Xcode Run，第一次出现钥匙串提示时选择允许。
 
-本项目目前的 bundle ID 是 `sg.edu.nus.nusPresentationCapture`，并包含 Sign in with Apple entitlement。若你没有该 NUS App ID 或对应开发团队，真机签名可能失败；届时需要使用实验室开发团队，或在个人调试配置中使用自己的唯一 bundle ID 并暂时移除未获授权的 Apple 登录 capability。不要为了消除签名错误随意修改正式配置后直接提交。
+正式 bundle ID 为 `sg.edu.nus.nusPresentationCapture`。真机调试可以选择实验室开发团队；使用个人免费 Team 时，需要使用自己的唯一 Debug bundle ID。Google 登录还需要与当前 bundle ID 匹配的 iOS OAuth client；未配置凭据时不能登录主页。
 
 真实 iPhone 访问 Mac 上的服务器时，不能使用 `localhost`。把 App 设置中的服务器地址改成 Mac 的局域网 IP，例如：
 

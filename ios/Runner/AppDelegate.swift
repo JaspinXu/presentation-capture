@@ -1,10 +1,13 @@
 import Flutter
+import AVFoundation
 import CryptoKit
 import SQLite3
 import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  private var mediaChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -18,6 +21,55 @@ import UIKit
     BackgroundUploadManager.shared.configure(
       messenger: engineBridge.applicationRegistrar.messenger()
     )
+    mediaChannel = FlutterMethodChannel(
+      name: "sg.edu.nus.presentation_capture/media_processing",
+      binaryMessenger: engineBridge.applicationRegistrar.messenger()
+    )
+    mediaChannel?.setMethodCallHandler { call, result in
+      guard call.method == "extractAudio",
+            let arguments = call.arguments as? [String: Any],
+            let videoPath = arguments["videoPath"] as? String,
+            let outputPath = arguments["outputPath"] as? String
+      else {
+        result(FlutterMethodNotImplemented)
+        return
+      }
+      Self.extractAudio(videoPath: videoPath, outputPath: outputPath, result: result)
+    }
+  }
+
+  private static func extractAudio(
+    videoPath: String,
+    outputPath: String,
+    result: @escaping FlutterResult
+  ) {
+    let source = URL(fileURLWithPath: videoPath)
+    let destination = URL(fileURLWithPath: outputPath)
+    try? FileManager.default.removeItem(at: destination)
+    let asset = AVURLAsset(url: source)
+    guard let exporter = AVAssetExportSession(
+      asset: asset,
+      presetName: AVAssetExportPresetAppleM4A
+    ) else {
+      result(FlutterError(code: "audio_export_unavailable", message: "Audio export is unavailable", details: nil))
+      return
+    }
+    exporter.outputURL = destination
+    exporter.outputFileType = .m4a
+    exporter.shouldOptimizeForNetworkUse = true
+    exporter.exportAsynchronously {
+      DispatchQueue.main.async {
+        if exporter.status == .completed {
+          result(destination.path)
+        } else {
+          result(FlutterError(
+            code: "audio_export_failed",
+            message: exporter.error?.localizedDescription ?? "Audio export failed",
+            details: nil
+          ))
+        }
+      }
+    }
   }
 
   override func application(
@@ -83,6 +135,9 @@ private final class UploadJournal {
         created_at REAL NOT NULL
       )
     """)
+    // Version 3 uses one native session per asset: <video-id>:<asset-type>.
+    // Stop legacy single-video sessions so they cannot retry obsolete endpoints.
+    execute("UPDATE sessions SET state='failed' WHERE instr(id, ':')=0 AND state NOT IN ('completed', 'failed')")
   }
 
   deinit { sqlite3_close(database) }
@@ -350,7 +405,13 @@ final class BackgroundUploadManager: NSObject, URLSessionTaskDelegate, URLSessio
 
   func restoreSession() {
     _ = session
-    workQueue.async { self.fillAllWindows() }
+    session.getAllTasks { tasks in
+      for task in tasks {
+        let sessionId = (task.taskDescription ?? "").split(separator: "#").first ?? ""
+        if !sessionId.contains(":") { task.cancel() }
+      }
+      self.workQueue.async { self.fillAllWindows() }
+    }
   }
 
   func configure(messenger: FlutterBinaryMessenger) {

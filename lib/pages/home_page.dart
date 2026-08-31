@@ -91,6 +91,37 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     await _load();
   }
 
+  Future<void> _deleteLocal(VideoRecord video) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        content: Text(context.strings.get('deleteConfirm')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.strings.get('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.strings.get('delete')),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    for (final path in [
+      video.localPath,
+      video.audioPath,
+      video.presentationPath,
+    ]) {
+      if (path.isEmpty) continue;
+      final file = File(path);
+      if (await file.exists()) await file.delete();
+    }
+    await AppDatabase.instance.delete(video.id);
+    await _load();
+  }
+
   String _statusText(BuildContext context, UploadStatus status) {
     return context.strings.get(switch (status) {
       UploadStatus.localOnly => 'localOnly',
@@ -220,13 +251,29 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
                               ),
                             )
                           : null,
-                      trailing: video.status == UploadStatus.failed
-                          ? IconButton(
-                              tooltip: context.strings.get('retry'),
-                              onPressed: () => _retry(video),
-                              icon: const Icon(Icons.refresh),
-                            )
-                          : null,
+                      trailing:
+                          video.status == UploadStatus.uploading ||
+                              video.status == UploadStatus.waiting
+                          ? null
+                          : PopupMenuButton<String>(
+                              onSelected: (value) {
+                                if (value == 'retry') unawaited(_retry(video));
+                                if (value == 'delete') {
+                                  unawaited(_deleteLocal(video));
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (video.status == UploadStatus.failed)
+                                  PopupMenuItem(
+                                    value: 'retry',
+                                    child: Text(context.strings.get('retry')),
+                                  ),
+                                PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text(context.strings.get('delete')),
+                                ),
+                              ],
+                            ),
                     ),
                   );
                 },

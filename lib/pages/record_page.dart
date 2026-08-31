@@ -44,6 +44,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   Future<void> _initialize() async {
     try {
       await SystemChrome.setPreferredOrientations([
+        DeviceOrientation.portraitUp,
         DeviceOrientation.landscapeLeft,
         DeviceOrientation.landscapeRight,
       ]);
@@ -131,7 +132,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
       );
       if (!mounted || proceed != true) return;
     }
-    await controller.lockCaptureOrientation();
+    await controller.lockCaptureOrientation(controller.value.deviceOrientation);
     await controller.prepareForVideoRecording();
     await controller.startVideoRecording();
     _seconds = 0;
@@ -169,6 +170,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
     _stopwatch.stop();
     try {
       final captured = await controller.stopVideoRecording();
+      await controller.unlockCaptureOrientation();
       final documents = await getApplicationDocumentsDirectory();
       final directory = Directory(p.join(documents.path, 'recordings'));
       await directory.create(recursive: true);
@@ -216,6 +218,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     final controller = _controller;
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
@@ -223,12 +226,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
           fit: StackFit.expand,
           children: [
             if (controller?.value.isInitialized ?? false)
-              Center(
-                child: AspectRatio(
-                  aspectRatio: controller!.value.aspectRatio,
-                  child: CameraPreview(controller),
-                ),
-              )
+              Center(child: CameraPreview(controller!))
             else
               Center(
                 child: _error == null
@@ -258,7 +256,7 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
             ),
             if (_resolutionFallback)
               Positioned(
-                bottom: 12,
+                bottom: portrait ? 110 : 12,
                 left: 16,
                 right: 16,
                 child: Center(
@@ -283,17 +281,25 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
             if (_recording)
               Positioned(
                 left: 28,
-                top: 0,
-                bottom: 0,
-                child: Center(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _stopping ? null : _togglePause,
-                    icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
-                    label: Text(
-                      context.strings.get(_paused ? 'resume' : 'pause'),
-                    ),
-                  ),
-                ),
+                bottom: portrait ? 28 : 0,
+                top: portrait ? null : 0,
+                child: portrait
+                    ? FilledButton.tonalIcon(
+                        onPressed: _stopping ? null : _togglePause,
+                        icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                        label: Text(
+                          context.strings.get(_paused ? 'resume' : 'pause'),
+                        ),
+                      )
+                    : Center(
+                        child: FilledButton.tonalIcon(
+                          onPressed: _stopping ? null : _togglePause,
+                          icon: Icon(_paused ? Icons.play_arrow : Icons.pause),
+                          label: Text(
+                            context.strings.get(_paused ? 'resume' : 'pause'),
+                          ),
+                        ),
+                      ),
               ),
             Positioned(
               top: 20,
@@ -320,34 +326,30 @@ class _RecordPageState extends State<RecordPage> with WidgetsBindingObserver {
             ),
             Positioned(
               right: 28,
-              top: 0,
-              bottom: 0,
-              child: Center(
-                child: FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: _recording ? Colors.red : Colors.white,
-                    foregroundColor: _recording ? Colors.white : Colors.red,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 24,
-                      vertical: 18,
-                    ),
-                  ),
-                  onPressed:
-                      controller?.value.isInitialized != true || _stopping
-                      ? null
-                      : (_recording ? _stopRecording : _startRecording),
-                  icon: Icon(
-                    _recording ? Icons.stop : Icons.fiber_manual_record,
-                  ),
-                  label: Text(
-                    context.strings.get(_recording ? 'stop' : 'start'),
-                  ),
-                ),
-              ),
+              bottom: portrait ? 28 : 0,
+              top: portrait ? null : 0,
+              child: portrait
+                  ? _recordButton(controller)
+                  : Center(child: _recordButton(controller)),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _recordButton(CameraController? controller) {
+    return FilledButton.icon(
+      style: FilledButton.styleFrom(
+        backgroundColor: _recording ? Colors.red : Colors.white,
+        foregroundColor: _recording ? Colors.white : Colors.red,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      ),
+      onPressed: controller?.value.isInitialized != true || _stopping
+          ? null
+          : (_recording ? _stopRecording : _startRecording),
+      icon: Icon(_recording ? Icons.stop : Icons.fiber_manual_record),
+      label: Text(context.strings.get(_recording ? 'stop' : 'start')),
     );
   }
 }

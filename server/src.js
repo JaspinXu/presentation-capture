@@ -17,10 +17,10 @@ const demoToken = process.env.DEMO_TOKEN ?? 'nus-demo-token-change-me';
 const demoLoginEnabled = (process.env.ENABLE_DEMO_LOGIN ?? 'true') === 'true';
 const authSecret = process.env.AUTH_SECRET ?? 'change-this-auth-secret-before-deployment';
 const googleClientIds = (process.env.GOOGLE_CLIENT_IDS ?? '').split(',').map((value) => value.trim()).filter(Boolean);
-const appleClientIds = (process.env.APPLE_CLIENT_IDS ?? '').split(',').map((value) => value.trim()).filter(Boolean);
 const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2/v3/certs'));
-const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const assetTypes = new Set(['video', 'audio', 'presentation']);
+const videoLocks = new Map();
 
 await fsp.mkdir(dataRoot, { recursive: true });
 app.use(cors());
@@ -80,14 +80,43 @@ async function readOwnedMetadata(id, userId) {
 }
 
 async function writeMetadata(id, metadata) {
-  await fsp.writeFile(
-    path.join(videoDirectory(id), 'metadata.json'),
-    JSON.stringify(metadata, null, 2),
-  );
+  const destination = path.join(videoDirectory(id), 'metadata.json');
+  const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
+  await fsp.writeFile(temporary, JSON.stringify(metadata, null, 2));
+  await fsp.rename(temporary, destination);
 }
 
-async function completedParts(id) {
-  const directory = path.join(videoDirectory(id), 'parts');
+async function withVideoLock(id, action) {
+  const previous = videoLocks.get(id) ?? Promise.resolve();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const tail = previous.catch(() => {}).then(() => gate);
+  videoLocks.set(id, tail);
+  await previous.catch(() => {});
+  try {
+    return await action();
+  } finally {
+    release();
+    if (videoLocks.get(id) === tail) videoLocks.delete(id);
+  }
+}
+
+async function updateOwnedMetadata(id, userId, update) {
+  return withVideoLock(id, async () => {
+    const metadata = await readOwnedMetadata(id, userId);
+    await update(metadata);
+    await writeMetadata(id, metadata);
+    return metadata;
+  });
+}
+
+function assetDirectory(id, assetType) {
+  if (!assetTypes.has(assetType)) throw new Error('invalid asset type');
+  return path.join(videoDirectory(id), 'assets', assetType);
+}
+
+async function completedParts(id, assetType) {
+  const directory = path.join(assetDirectory(id, assetType), 'parts');
   await fsp.mkdir(directory, { recursive: true });
   const names = await fsp.readdir(directory);
   return names
@@ -122,13 +151,6 @@ app.post('/api/auth/social', async (req, res, next) => {
         audience: googleClientIds,
       });
       identity = { subject: verified.payload.sub, email: verified.payload.email };
-    } else if (provider === 'apple') {
-      if (appleClientIds.length === 0) return res.status(503).json({ error: 'apple_not_configured' });
-      const verified = await jwtVerify(idToken, appleKeys, {
-        issuer: 'https://appleid.apple.com',
-        audience: appleClientIds,
-      });
-      identity = { subject: verified.payload.sub, email: verified.payload.email ?? req.body.email };
     } else {
       return res.status(400).json({ error: 'unsupported_provider' });
     }
@@ -149,16 +171,41 @@ app.post('/api/videos', async (req, res, next) => {
   try {
     const id = req.body?.id;
     const directory = videoDirectory(id);
+    const assets = req.body?.assets;
+    if (!assets || [...assetTypes].some((type) =>
+      !assets[type] || !Number.isSafeInteger(assets[type].fileSize) || assets[type].fileSize < 1 ||
+      !/^[a-f0-9]{64}$/i.test(assets[type].sha256 ?? ''))) {
+      return res.status(400).json({ error: 'invalid_assets' });
+    }
+    const presentationExtension = path.extname(assets.presentation.fileName ?? '').toLowerCase();
+    if (!['.ppt', '.pptx', '.pdf'].includes(presentationExtension)) {
+      return res.status(400).json({ error: 'invalid_presentation_type' });
+    }
+    const normalizedAssets = {
+      video: { ...assets.video, fileName: 'final.mp4', status: 'created' },
+      audio: { ...assets.audio, fileName: 'audio.m4a', status: 'created' },
+      presentation: {
+        ...assets.presentation,
+        originalFileName: path.basename(assets.presentation.fileName),
+        fileName: `presentation${presentationExtension}`,
+        status: 'created',
+      },
+    };
     if (fs.existsSync(directory)) {
       const existing = await readOwnedMetadata(id, req.userId);
-      if (existing.fileSize !== req.body.fileSize || existing.sha256 !== req.body.sha256) {
+      if ([...assetTypes].some((type) =>
+        existing.assets?.[type]?.fileSize !== normalizedAssets[type].fileSize ||
+        existing.assets?.[type]?.sha256 !== normalizedAssets[type].sha256)) {
         return res.status(409).json({ error: 'idempotency_conflict' });
       }
       return res.status(200).json({ id, status: existing.status });
     }
-    await fsp.mkdir(path.join(directory, 'parts'), { recursive: true });
+    for (const type of assetTypes) {
+      await fsp.mkdir(path.join(assetDirectory(id, type), 'parts'), { recursive: true });
+    }
     await writeMetadata(id, {
       ...req.body,
+      assets: normalizedAssets,
       userId: req.userId,
       status: 'created',
       createdAt: new Date().toISOString(),
@@ -167,40 +214,53 @@ app.post('/api/videos', async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-app.post('/api/videos/:id/upload/init', async (req, res, next) => {
+app.post('/api/videos/:id/assets/:asset/upload/init', async (req, res, next) => {
   try {
     const metadata = await readOwnedMetadata(req.params.id, req.userId);
+    const asset = metadata.assets?.[req.params.asset];
+    if (!assetTypes.has(req.params.asset) || !asset) {
+      return res.status(400).json({ error: 'invalid_asset_type' });
+    }
     const nextPartSize = Number(req.body.partSize);
     const nextTotalParts = Number(req.body.totalParts);
     const nextFileSize = Number(req.body.fileSize);
     if (!Number.isSafeInteger(nextPartSize) || nextPartSize < 1024 || nextPartSize > 64 * 1024 * 1024 ||
         !Number.isSafeInteger(nextTotalParts) || nextTotalParts < 1 ||
-        nextFileSize !== metadata.fileSize || Math.ceil(nextFileSize / nextPartSize) !== nextTotalParts) {
+        nextFileSize !== asset.fileSize || Math.ceil(nextFileSize / nextPartSize) !== nextTotalParts) {
       return res.status(400).json({ error: 'invalid_upload_plan' });
     }
-    if (metadata.partSize && (metadata.partSize !== nextPartSize || metadata.totalParts !== nextTotalParts)) {
+    if (asset.partSize && (asset.partSize !== nextPartSize || asset.totalParts !== nextTotalParts)) {
       return res.status(409).json({ error: 'upload_plan_changed' });
     }
-    metadata.uploadSessionId = req.body.uploadSessionId;
-    metadata.partSize = nextPartSize;
-    metadata.totalParts = nextTotalParts;
-    metadata.status = 'uploading';
-    await writeMetadata(req.params.id, metadata);
-    res.json({ completedParts: await completedParts(req.params.id) });
+    await updateOwnedMetadata(req.params.id, req.userId, async (latest) => {
+      const latestAsset = latest.assets[req.params.asset];
+      latestAsset.uploadSessionId = req.body.uploadSessionId;
+      latestAsset.partSize = nextPartSize;
+      latestAsset.totalParts = nextTotalParts;
+      if (latestAsset.status !== 'uploaded') latestAsset.status = 'uploading';
+      latest.status = [...assetTypes].every((type) => latest.assets[type].status === 'uploaded')
+        ? 'uploaded'
+        : 'uploading';
+    });
+    res.json({ completedParts: await completedParts(req.params.id, req.params.asset) });
   } catch (error) { next(error); }
 });
 
 app.put(
-  '/api/videos/:id/parts/:partNumber',
+  '/api/videos/:id/assets/:asset/parts/:partNumber',
   express.raw({ type: 'application/octet-stream', limit: '65mb' }),
   async (req, res, next) => {
     try {
       const metadata = await readOwnedMetadata(req.params.id, req.userId);
+      const asset = metadata.assets?.[req.params.asset];
+      if (!assetTypes.has(req.params.asset) || !asset) {
+        return res.status(400).json({ error: 'invalid_asset_type' });
+      }
       const partNumber = Number(req.params.partNumber);
-      if (!Number.isInteger(partNumber) || partNumber < 0 || partNumber >= metadata.totalParts) {
+      if (!Number.isInteger(partNumber) || partNumber < 0 || partNumber >= asset.totalParts) {
         return res.status(400).json({ error: 'invalid_part_number' });
       }
-      const expectedSize = Math.min(metadata.partSize, metadata.fileSize - (partNumber * metadata.partSize));
+      const expectedSize = Math.min(asset.partSize, asset.fileSize - (partNumber * asset.partSize));
       if (!Buffer.isBuffer(req.body) || req.body.length !== expectedSize) {
         return res.status(400).json({ error: 'invalid_part' });
       }
@@ -208,7 +268,7 @@ app.put(
       if (req.headers['x-part-sha256'] && req.headers['x-part-sha256'] !== actualPartHash) {
         return res.status(422).json({ error: 'part_checksum_mismatch' });
       }
-      const destination = path.join(videoDirectory(req.params.id), 'parts', `part_${partNumber}`);
+      const destination = path.join(assetDirectory(req.params.id, req.params.asset), 'parts', `part_${partNumber}`);
       const temporary = `${destination}.${crypto.randomUUID()}.tmp`;
       await fsp.writeFile(temporary, req.body);
       await fsp.rename(temporary, destination);
@@ -217,31 +277,38 @@ app.put(
   },
 );
 
-app.get('/api/videos/:id/parts', async (req, res, next) => {
+app.get('/api/videos/:id/assets/:asset/parts', async (req, res, next) => {
   try {
-    await readOwnedMetadata(req.params.id, req.userId);
-    res.json({ completedParts: await completedParts(req.params.id) });
+    const metadata = await readOwnedMetadata(req.params.id, req.userId);
+    if (!assetTypes.has(req.params.asset) || !metadata.assets?.[req.params.asset]) {
+      return res.status(400).json({ error: 'invalid_asset_type' });
+    }
+    res.json({ completedParts: await completedParts(req.params.id, req.params.asset) });
   } catch (error) { next(error); }
 });
 
-app.post('/api/videos/:id/upload/complete', async (req, res, next) => {
+app.post('/api/videos/:id/assets/:asset/upload/complete', async (req, res, next) => {
   try {
     const id = req.params.id;
     const metadata = await readOwnedMetadata(id, req.userId);
-    const finalPath = path.join(videoDirectory(id), 'final.mp4');
-    if (metadata.status === 'uploaded' && fs.existsSync(finalPath)) {
-      return res.json({ id, status: 'uploaded', sha256: metadata.sha256 });
+    const asset = metadata.assets?.[req.params.asset];
+    if (!assetTypes.has(req.params.asset) || !asset) {
+      return res.status(400).json({ error: 'invalid_asset_type' });
+    }
+    const finalPath = path.join(videoDirectory(id), asset.fileName);
+    if (asset.status === 'uploaded' && fs.existsSync(finalPath)) {
+      return res.json({ id, asset: req.params.asset, status: 'uploaded', sha256: asset.sha256 });
     }
     const totalParts = Number(req.body.totalParts);
-    const parts = await completedParts(id);
-    if (totalParts !== metadata.totalParts || parts.length !== totalParts ||
+    const parts = await completedParts(id, req.params.asset);
+    if (totalParts !== asset.totalParts || parts.length !== totalParts ||
         !parts.every((part, index) => part === index)) {
       return res.status(409).json({ error: 'missing_parts', completedParts: parts });
     }
     const temporary = `${finalPath}.tmp`;
     async function* assembledChunks() {
       for (let part = 0; part < totalParts; part += 1) {
-        yield* fs.createReadStream(path.join(videoDirectory(id), 'parts', `part_${part}`));
+        yield* fs.createReadStream(path.join(assetDirectory(id, req.params.asset), 'parts', `part_${part}`));
       }
     }
     await pipeline(Readable.from(assembledChunks()), fs.createWriteStream(temporary, { flags: 'w' }));
@@ -253,15 +320,20 @@ app.post('/api/videos/:id/upload/complete', async (req, res, next) => {
       stream.on('error', reject);
     });
     const actualHash = hash.digest('hex');
-    if (actualHash !== req.body.sha256 || actualHash !== metadata.sha256) {
+    if (actualHash !== req.body.sha256 || actualHash !== asset.sha256) {
       await fsp.unlink(temporary);
       return res.status(422).json({ error: 'checksum_mismatch', actualHash });
     }
     await fsp.rename(temporary, finalPath);
-    metadata.status = 'uploaded';
-    metadata.completedAt = new Date().toISOString();
-    await writeMetadata(id, metadata);
-    res.json({ id, status: 'uploaded', sha256: actualHash });
+    await updateOwnedMetadata(id, req.userId, async (latest) => {
+      latest.assets[req.params.asset].status = 'uploaded';
+      latest.assets[req.params.asset].completedAt = new Date().toISOString();
+      latest.status = [...assetTypes].every((type) => latest.assets[type].status === 'uploaded')
+        ? 'uploaded'
+        : 'uploading';
+      if (latest.status === 'uploaded') latest.completedAt = new Date().toISOString();
+    });
+    res.json({ id, asset: req.params.asset, status: 'uploaded', sha256: actualHash });
   } catch (error) { next(error); }
 });
 
@@ -275,6 +347,7 @@ app.get('/api/videos/:id/status', async (req, res, next) => {
 app.use((error, _req, res, _next) => {
   console.error(error);
   if (error?.message === 'invalid video id') return res.status(400).json({ error: error.message });
+  if (error?.message === 'invalid asset type') return res.status(400).json({ error: error.message });
   if (error?.statusCode === 403) return res.status(403).json({ error: 'forbidden' });
   if (error?.code === 'ENOENT') return res.status(404).json({ error: 'not_found' });
   res.status(500).json({ error: 'server_error' });

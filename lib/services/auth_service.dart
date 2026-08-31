@@ -4,7 +4,6 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 
 class AuthService {
   static const _storage = FlutterSecureStorage();
@@ -21,9 +20,6 @@ class AuthService {
     return Uri.parse('$serverUrl$path');
   }
 
-  Future<bool> signIn(String account, String password) =>
-      _exchange('/api/login', {'account': account, 'password': password});
-
   Future<bool> signInWithGoogle() async {
     try {
       const iosClientId = String.fromEnvironment('GOOGLE_IOS_CLIENT_ID');
@@ -39,29 +35,6 @@ class AuthService {
       return await _exchange('/api/auth/social', {
         'provider': 'google',
         'idToken': idToken,
-      });
-    } catch (_) {
-      return false;
-    }
-  }
-
-  Future<bool> signInWithApple() async {
-    try {
-      if (!await SignInWithApple.isAvailable()) return false;
-      final credential = await SignInWithApple.getAppleIDCredential(
-        scopes: const [
-          AppleIDAuthorizationScopes.email,
-          AppleIDAuthorizationScopes.fullName,
-        ],
-      );
-      if (credential.identityToken == null) return false;
-      return await _exchange('/api/auth/social', {
-        'provider': 'apple',
-        'idToken': credential.identityToken,
-        'authorizationCode': credential.authorizationCode,
-        'email': credential.email,
-        'givenName': credential.givenName,
-        'familyName': credential.familyName,
       });
     } catch (_) {
       return false;

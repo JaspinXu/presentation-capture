@@ -2,13 +2,17 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:crypto/crypto.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 
 import '../l10n/app_strings.dart';
 import '../models/recorded_draft.dart';
 import '../models/video_record.dart';
 import '../services/app_database.dart';
+import '../services/media_processing_service.dart';
 import '../services/upload_service.dart';
 import 'record_page.dart';
 
@@ -28,6 +32,8 @@ class _ReviewPageState extends State<ReviewPage> {
   final _notes = TextEditingController();
   late final VideoPlayerController _video;
   bool _saving = false;
+  XFile? _presentation;
+  String? _processingError;
 
   @override
   void initState() {
@@ -50,26 +56,89 @@ class _ReviewPageState extends State<ReviewPage> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() => _saving = true);
-    final file = File(widget.draft.localPath);
-    final digest = await sha256.bind(file.openRead()).first;
-    final video = VideoRecord(
-      id: widget.draft.id,
-      localPath: widget.draft.localPath,
-      recordedAt: widget.draft.recordedAt,
-      durationSeconds: widget.draft.durationSeconds,
-      resolution: widget.draft.resolution,
-      fileSize: await file.length(),
-      sha256: digest.toString(),
-      status: UploadStatus.waiting,
-      title: _title.text.trim(),
-      experimentId: _experiment.text.trim(),
-      participantId: _participant.text.trim(),
-      notes: _notes.text.trim(),
+    if (_presentation == null) {
+      setState(
+        () => _processingError = context.strings.get('presentationRequired'),
+      );
+      return;
+    }
+    setState(() {
+      _saving = true;
+      _processingError = null;
+    });
+    try {
+      final documents = await getApplicationDocumentsDirectory();
+      final videoFile = File(widget.draft.localPath);
+      final audioDirectory = Directory(p.join(documents.path, 'audio'));
+      final presentationDirectory = Directory(
+        p.join(documents.path, 'presentations'),
+      );
+      await audioDirectory.create(recursive: true);
+      await presentationDirectory.create(recursive: true);
+
+      final extension = p.extension(_presentation!.name).toLowerCase();
+      final presentationFile = File(
+        p.join(presentationDirectory.path, '${widget.draft.id}$extension'),
+      );
+      await File(_presentation!.path).copy(presentationFile.path);
+      final audioPath = p.join(audioDirectory.path, '${widget.draft.id}.m4a');
+      await MediaProcessingService().extractAudio(
+        videoPath: videoFile.path,
+        outputPath: audioPath,
+      );
+      final audioFile = File(audioPath);
+
+      final videoDigest = await sha256.bind(videoFile.openRead()).first;
+      final audioDigest = await sha256.bind(audioFile.openRead()).first;
+      final presentationDigest = await sha256
+          .bind(presentationFile.openRead())
+          .first;
+      final video = VideoRecord(
+        id: widget.draft.id,
+        localPath: widget.draft.localPath,
+        recordedAt: widget.draft.recordedAt,
+        durationSeconds: widget.draft.durationSeconds,
+        resolution: widget.draft.resolution,
+        fileSize: await videoFile.length(),
+        sha256: videoDigest.toString(),
+        audioPath: audioFile.path,
+        audioSize: await audioFile.length(),
+        audioSha256: audioDigest.toString(),
+        presentationPath: presentationFile.path,
+        presentationName: _presentation!.name,
+        presentationSize: await presentationFile.length(),
+        presentationSha256: presentationDigest.toString(),
+        status: UploadStatus.waiting,
+        title: _title.text.trim(),
+        experimentId: _experiment.text.trim(),
+        participantId: _participant.text.trim(),
+        notes: _notes.text.trim(),
+      );
+      await AppDatabase.instance.save(video);
+      unawaited(UploadService().enqueue(video).catchError((_) {}));
+      if (mounted) Navigator.pop(context, true);
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _processingError = context.strings.get('processingFailed');
+        });
+      }
+    }
+  }
+
+  Future<void> _pickPresentation() async {
+    const typeGroup = XTypeGroup(
+      label: 'Presentation',
+      extensions: ['ppt', 'pptx', 'pdf'],
     );
-    await AppDatabase.instance.save(video);
-    unawaited(UploadService().enqueue(video).catchError((_) {}));
-    if (mounted) Navigator.pop(context, true);
+    final selected = await openFile(acceptedTypeGroups: const [typeGroup]);
+    if (selected != null && mounted) {
+      setState(() {
+        _presentation = selected;
+        _processingError = null;
+      });
+    }
   }
 
   Future<void> _retake() async {
@@ -190,11 +259,49 @@ class _ReviewPageState extends State<ReviewPage> {
           maxLines: 3,
           decoration: InputDecoration(labelText: context.strings.get('notes')),
         ),
+        const SizedBox(height: 12),
+        InputDecorator(
+          decoration: InputDecoration(
+            labelText: context.strings.get('presentationFile'),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.slideshow_outlined),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  _presentation?.name ??
+                      context.strings.get('choosePresentation'),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              TextButton(
+                onPressed: _saving ? null : _pickPresentation,
+                child: Text(context.strings.get('choosePresentation')),
+              ),
+            ],
+          ),
+        ),
+        if (_processingError != null) ...[
+          const SizedBox(height: 8),
+          Text(
+            _processingError!,
+            style: TextStyle(color: Theme.of(context).colorScheme.error),
+          ),
+        ],
         const SizedBox(height: 20),
         FilledButton.icon(
           onPressed: _saving ? null : _save,
-          icon: const Icon(Icons.cloud_upload),
-          label: Text(context.strings.get('save')),
+          icon: _saving
+              ? const SizedBox.square(
+                  dimension: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.cloud_upload),
+          label: Text(
+            context.strings.get(_saving ? 'preparingBundle' : 'save'),
+          ),
         ),
         TextButton(
           onPressed: _saving ? null : _retake,

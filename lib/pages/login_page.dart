@@ -23,8 +23,6 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final _account = TextEditingController(text: 'demo@nus.edu.sg');
-  final _password = TextEditingController(text: 'demo1234');
   final _server = TextEditingController();
   bool _busy = false;
   String? _error;
@@ -40,33 +38,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
-    _account.dispose();
-    _password.dispose();
     _server.dispose();
     super.dispose();
-  }
-
-  Future<void> _signIn() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setString(
-      'serverUrl',
-      _server.text.trim().replaceAll(RegExp(r'/$'), ''),
-    );
-    final success = await widget.authService.signIn(
-      _account.text.trim(),
-      _password.text,
-    );
-    if (!mounted) return;
-    setState(() => _busy = false);
-    if (success) {
-      widget.onSignedIn();
-    } else {
-      setState(() => _error = context.strings.get('loginFailed'));
-    }
   }
 
   Future<void> _socialSignIn(Future<bool> Function() action) async {
@@ -114,31 +87,11 @@ class _LoginPageState extends State<LoginPage> {
                   ),
                   const SizedBox(height: 32),
                   TextField(
-                    controller: _account,
-                    decoration: InputDecoration(
-                      labelText: context.strings.get('account'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _password,
-                    obscureText: true,
-                    decoration: InputDecoration(
-                      labelText: context.strings.get('password'),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
                     controller: _server,
                     keyboardType: TextInputType.url,
                     decoration: InputDecoration(
                       labelText: context.strings.get('serverUrl'),
                     ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    context.strings.get('demoHint'),
-                    style: Theme.of(context).textTheme.bodySmall,
                   ),
                   if (_error != null) ...[
                     const SizedBox(height: 12),
@@ -150,43 +103,18 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ],
                   const SizedBox(height: 20),
-                  FilledButton(
-                    onPressed: _busy ? null : _signIn,
-                    child: _busy
-                        ? const SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Text(context.strings.get('signIn')),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      const Expanded(child: Divider()),
-                      Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        child: Text(context.strings.get('or')),
-                      ),
-                      const Expanded(child: Divider()),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  OutlinedButton.icon(
-                    onPressed: _busy
-                        ? null
-                        : () =>
-                              _socialSignIn(widget.authService.signInWithApple),
-                    icon: const Icon(Icons.apple),
-                    label: Text(context.strings.get('continueApple')),
-                  ),
-                  const SizedBox(height: 8),
                   OutlinedButton.icon(
                     onPressed: _busy
                         ? null
                         : () => _socialSignIn(
                             widget.authService.signInWithGoogle,
                           ),
-                    icon: const Icon(Icons.g_mobiledata, size: 28),
+                    icon: _busy
+                        ? const SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.g_mobiledata, size: 28),
                     label: Text(context.strings.get('continueGoogle')),
                   ),
                   const SizedBox(height: 12),

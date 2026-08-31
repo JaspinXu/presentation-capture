@@ -16,6 +16,7 @@ class UploadSession {
   const UploadSession({
     required this.id,
     required this.videoId,
+    required this.assetType,
     required this.state,
     required this.partSize,
     required this.totalParts,
@@ -31,6 +32,7 @@ class UploadSession {
 
   final String id;
   final String videoId;
+  final String assetType;
   final UploadSessionState state;
   final int partSize;
   final int totalParts;
@@ -46,6 +48,7 @@ class UploadSession {
   Map<String, Object?> toMap() => {
     'id': id,
     'video_id': videoId,
+    'asset_type': assetType,
     'state': state.name,
     'part_size': partSize,
     'total_parts': totalParts,
@@ -62,6 +65,7 @@ class UploadSession {
   factory UploadSession.fromMap(Map<String, Object?> map) => UploadSession(
     id: map['id']! as String,
     videoId: map['video_id']! as String,
+    assetType: map['asset_type']! as String,
     state: UploadSessionState.values.byName(map['state']! as String),
     partSize: map['part_size']! as int,
     totalParts: map['total_parts']! as int,
@@ -87,6 +91,7 @@ class UploadSession {
   }) => UploadSession(
     id: id,
     videoId: videoId,
+    assetType: assetType,
     state: state ?? this.state,
     partSize: partSize,
     totalParts: totalParts,

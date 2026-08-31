@@ -20,7 +20,7 @@ test.after(async () => {
   await fsp.rm(dataDirectory, { recursive: true, force: true });
 });
 
-test('accepts, resumes, and assembles a multipart video upload', async () => {
+test('accepts, resumes, and assembles video, audio, and presentation assets', async () => {
   const login = await fetch(`${baseUrl}/api/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -34,57 +34,81 @@ test('accepts, resumes, and assembles a multipart video upload', async () => {
     Buffer.from('continuous-presentation-video'),
   ]);
   const sha256 = crypto.createHash('sha256').update(video).digest('hex');
+  const audio = Buffer.from('presentation-audio-track');
+  const presentation = Buffer.from('%PDF-presentation');
+  const assets = {
+    video: { fileName: 'capture.mp4', fileSize: video.length, sha256 },
+    audio: {
+      fileName: 'audio.m4a',
+      fileSize: audio.length,
+      sha256: crypto.createHash('sha256').update(audio).digest('hex'),
+    },
+    presentation: {
+      fileName: 'slides.pdf',
+      fileSize: presentation.length,
+      sha256: crypto.createHash('sha256').update(presentation).digest('hex'),
+    },
+  };
   const auth = { authorization: 'Bearer test-token' };
 
   const created = await fetch(`${baseUrl}/api/videos`, {
     method: 'POST',
     headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ id, fileSize: video.length, sha256 }),
+    body: JSON.stringify({ id, fileSize: video.length, sha256, assets }),
   });
   assert.equal(created.status, 201);
 
-  const initialized = await fetch(`${baseUrl}/api/videos/${id}/upload/init`, {
-    method: 'POST',
-    headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({
-      uploadSessionId: id,
-      partSize: 1024,
-      totalParts: 2,
-      fileSize: video.length,
-    }),
-  });
-  assert.equal(initialized.status, 200);
-
-  for (const [part, body] of [video.subarray(0, 1024), video.subarray(1024)].entries()) {
-    const uploaded = await fetch(`${baseUrl}/api/videos/${id}/parts/${part}`, {
-      method: 'PUT',
-      headers: {
-        ...auth,
-        'content-type': 'application/octet-stream',
-        'x-part-sha256': crypto.createHash('sha256').update(body).digest('hex'),
-      },
-      body,
+  async function uploadAsset(type, body, partSize) {
+    const totalParts = Math.ceil(body.length / partSize);
+    const initialized = await fetch(`${baseUrl}/api/videos/${id}/assets/${type}/upload/init`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        uploadSessionId: `${id}:${type}`,
+        partSize,
+        totalParts,
+        fileSize: body.length,
+      }),
     });
-    assert.equal(uploaded.status, 201);
+    assert.equal(initialized.status, 200);
+    for (let part = 0; part < totalParts; part += 1) {
+      const chunk = body.subarray(part * partSize, (part + 1) * partSize);
+      const uploaded = await fetch(`${baseUrl}/api/videos/${id}/assets/${type}/parts/${part}`, {
+        method: 'PUT',
+        headers: {
+          ...auth,
+          'content-type': 'application/octet-stream',
+          'x-part-sha256': crypto.createHash('sha256').update(chunk).digest('hex'),
+        },
+        body: chunk,
+      });
+      assert.equal(uploaded.status, 201);
+    }
+    const parts = await fetch(`${baseUrl}/api/videos/${id}/assets/${type}/parts`, { headers: auth });
+    assert.deepEqual((await parts.json()).completedParts, [...Array(totalParts).keys()]);
+    const completed = await fetch(`${baseUrl}/api/videos/${id}/assets/${type}/upload/complete`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ totalParts, sha256: assets[type].sha256 }),
+    });
+    assert.equal(completed.status, 200);
+    const completedAgain = await fetch(`${baseUrl}/api/videos/${id}/assets/${type}/upload/complete`, {
+      method: 'POST',
+      headers: { ...auth, 'content-type': 'application/json' },
+      body: JSON.stringify({ totalParts, sha256: assets[type].sha256 }),
+    });
+    assert.equal(completedAgain.status, 200);
   }
 
-  const parts = await fetch(`${baseUrl}/api/videos/${id}/parts`, { headers: auth });
-  assert.deepEqual((await parts.json()).completedParts, [0, 1]);
-
-  const completed = await fetch(`${baseUrl}/api/videos/${id}/upload/complete`, {
-    method: 'POST',
-    headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ totalParts: 2, sha256 }),
-  });
-  assert.equal(completed.status, 200);
+  await Promise.all([
+    uploadAsset('video', video, 1024),
+    uploadAsset('audio', audio, 1024),
+    uploadAsset('presentation', presentation, 1024),
+  ]);
   assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'final.mp4')), video);
-
-  const completedAgain = await fetch(`${baseUrl}/api/videos/${id}/upload/complete`, {
-    method: 'POST',
-    headers: { ...auth, 'content-type': 'application/json' },
-    body: JSON.stringify({ totalParts: 2, sha256 }),
-  });
-  assert.equal(completedAgain.status, 200);
+  assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'audio.m4a')), audio);
+  assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'presentation.pdf')), presentation);
+  assert.equal((await (await fetch(`${baseUrl}/api/videos/${id}/status`, { headers: auth })).json()).status, 'uploaded');
 });
 
 test('does not accept social tokens when the provider is unconfigured', async () => {

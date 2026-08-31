@@ -10,7 +10,6 @@ services:
       ENABLE_DEMO_LOGIN: "true"
       AUTH_SECRET: ${AUTH_SECRET:-replace-with-a-long-random-secret}
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
-      APPLE_CLIENT_IDS: ${APPLE_CLIENT_IDS:-}
     volumes:
       - ./data:/data
     restart: unless-stopped

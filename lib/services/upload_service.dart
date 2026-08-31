@@ -15,6 +15,22 @@ import 'app_database.dart';
 import 'auth_service.dart';
 import 'background_upload_bridge.dart';
 
+class _UploadAsset {
+  const _UploadAsset({
+    required this.type,
+    required this.path,
+    required this.fileSize,
+    required this.sha256,
+    required this.fileName,
+  });
+
+  final String type;
+  final String path;
+  final int fileSize;
+  final String sha256;
+  final String fileName;
+}
+
 class UploadService {
   UploadService({AuthService? authService})
     : _auth = authService ?? AuthService();
@@ -41,29 +57,65 @@ class UploadService {
   }
 
   Future<void> enqueue(VideoRecord video, {bool force = false}) async {
-    final source = File(video.localPath);
-    await _validateSource(video, source);
-    var session = await _sessionFor(video, source);
+    final assets = _assets(video);
+    for (final asset in assets) {
+      await _validateSource(asset);
+    }
     await AppDatabase.instance.save(
-      video.copyWith(
-        status: UploadStatus.uploading,
-        progress: session.completedParts / session.totalParts,
-      ),
+      video.copyWith(status: UploadStatus.uploading, progress: 0),
     );
+    UploadSession? activeSession;
     try {
       await _ensureRemoteVideo(video);
-      await _initializeUpload(video, session);
-      session = await _reconcileServer(video, session);
-      if (session.completedParts == session.totalParts) {
-        await _complete(video, session);
-        return;
+      for (final asset in assets) {
+        var session = await _sessionFor(video, asset);
+        activeSession = session;
+        await _initializeUpload(video, asset, session);
+        session = await _reconcileServer(video, asset, session);
+        activeSession = session;
+        if (session.completedParts == session.totalParts) {
+          await _completeAsset(video, asset, session);
+        } else {
+          await _scheduleWindow(video, asset, session, force: force);
+        }
       }
-      await _scheduleWindow(video, session, force: force);
+      activeSession = null;
+      await _refreshBundleStatus(video);
     } catch (error) {
-      await _recordFailure(video, session, error);
+      if (activeSession != null) {
+        await _recordFailure(video, activeSession, error);
+      } else {
+        await AppDatabase.instance.save(
+          video.copyWith(status: UploadStatus.failed),
+        );
+      }
       rethrow;
     }
   }
+
+  List<_UploadAsset> _assets(VideoRecord video) => [
+    _UploadAsset(
+      type: 'video',
+      path: video.localPath,
+      fileSize: video.fileSize,
+      sha256: video.sha256,
+      fileName: 'final.mp4',
+    ),
+    _UploadAsset(
+      type: 'audio',
+      path: video.audioPath,
+      fileSize: video.audioSize,
+      sha256: video.audioSha256,
+      fileName: 'audio.m4a',
+    ),
+    _UploadAsset(
+      type: 'presentation',
+      path: video.presentationPath,
+      fileSize: video.presentationSize,
+      sha256: video.presentationSha256,
+      fileName: video.presentationName,
+    ),
+  ];
 
   Future<void> reconcile(VideoRecord video) async {
     if (video.status == UploadStatus.uploaded ||
@@ -72,11 +124,14 @@ class UploadService {
     }
     try {
       await _consumeNativeEvents();
-      final session = await AppDatabase.instance.uploadSessionForVideo(
+      final sessions = await AppDatabase.instance.uploadSessionsForVideo(
         video.id,
       );
-      if (session?.nextRetryAt != null &&
-          session!.nextRetryAt!.isAfter(DateTime.now())) {
+      if (sessions.any(
+        (session) =>
+            session.nextRetryAt != null &&
+            session.nextRetryAt!.isAfter(DateTime.now()),
+      )) {
         return;
       }
       await enqueue(video);
@@ -85,8 +140,15 @@ class UploadService {
     }
   }
 
-  Future<UploadSession> _sessionFor(VideoRecord video, File source) async {
-    final existing = await AppDatabase.instance.uploadSessionForVideo(video.id);
+  Future<UploadSession> _sessionFor(
+    VideoRecord video,
+    _UploadAsset asset,
+  ) async {
+    final source = File(asset.path);
+    final existing = await AppDatabase.instance.uploadSessionForAsset(
+      video.id,
+      asset.type,
+    );
     if (existing != null) {
       final stat = await source.stat();
       if (stat.size != existing.sourceSize ||
@@ -101,16 +163,17 @@ class UploadService {
       return existing;
     }
     final stat = await source.stat();
-    final totalParts = (video.fileSize / partSize).ceil();
+    final totalParts = (asset.fileSize / partSize).ceil();
     final now = DateTime.now();
     final session = UploadSession(
-      id: video.id,
+      id: '${video.id}:${asset.type}',
       videoId: video.id,
+      assetType: asset.type,
       state: UploadSessionState.queued,
       partSize: partSize,
       totalParts: totalParts,
       completedParts: 0,
-      sourceSize: video.fileSize,
+      sourceSize: asset.fileSize,
       sourceModifiedAt: stat.modified,
       retryCount: 0,
       createdAt: now,
@@ -122,7 +185,7 @@ class UploadService {
           sessionId: session.id,
           partNumber: number,
           offset: number * partSize,
-          length: min(partSize, video.fileSize - (number * partSize)),
+          length: min(partSize, asset.fileSize - (number * partSize)),
           state: UploadPartState.planned,
         ),
     ];
@@ -130,13 +193,14 @@ class UploadService {
     return session;
   }
 
-  Future<void> _validateSource(VideoRecord video, File source) async {
+  Future<void> _validateSource(_UploadAsset asset) async {
+    final source = File(asset.path);
     if (!await source.exists()) {
       throw const FileSystemException('Source video is missing');
     }
     final length = await source.length();
     if (length <= 0) throw const FileSystemException('Source video is empty');
-    if (length != video.fileSize) {
+    if (length != asset.fileSize || asset.sha256.isEmpty) {
       throw const FileSystemException(
         'Source video size changed after recording',
       );
@@ -182,9 +246,10 @@ class UploadService {
 
   Future<UploadSession> _reconcileServer(
     VideoRecord video,
+    _UploadAsset asset,
     UploadSession session,
   ) async {
-    final completed = await _completedParts(video.id);
+    final completed = await _completedParts(video.id, asset.type);
     await AppDatabase.instance.markServerParts(session.id, completed);
     final updated = session.copyWith(
       state: completed.length == session.totalParts
@@ -201,7 +266,7 @@ class UploadService {
     await AppDatabase.instance.save(
       video.copyWith(
         status: UploadStatus.uploading,
-        progress: completed.length / session.totalParts,
+        progress: await _bundleProgress(video.id),
       ),
     );
     await _removeCompletedTemps(updated.id, completed);
@@ -210,6 +275,7 @@ class UploadService {
 
   Future<void> _scheduleWindow(
     VideoRecord video,
+    _UploadAsset asset,
     UploadSession session, {
     bool force = false,
   }) async {
@@ -217,16 +283,20 @@ class UploadService {
       final preferences = await SharedPreferences.getInstance();
       final started = await _bridge.startSession(
         sessionId: session.id,
-        sourcePath: video.localPath,
+        sourcePath: asset.path,
         fileSize: session.sourceSize,
         partSize: session.partSize,
         totalParts: session.totalParts,
-        partUrlTemplate: await _uri('/api/videos/${video.id}/parts/__PART__'),
-        finalizeUrl: await _uri('/api/videos/${video.id}/upload/complete'),
+        partUrlTemplate: await _uri(
+          '/api/videos/${video.id}/assets/${asset.type}/parts/__PART__',
+        ),
+        finalizeUrl: await _uri(
+          '/api/videos/${video.id}/assets/${asset.type}/upload/complete',
+        ),
         finalizeBody: jsonEncode({
           'uploadSessionId': session.id,
           'totalParts': session.totalParts,
-          'sha256': video.sha256,
+          'sha256': asset.sha256,
         }),
         headers: await _headers(json: false),
         allowsCellular: preferences.getBool('allowCellular') ?? true,
@@ -257,13 +327,15 @@ class UploadService {
       if (part.attempts >= maxPartAttempts) {
         throw StateError('Part ${part.partNumber} exceeded its retry limit');
       }
-      final staged = await _stagePart(video, part);
+      final staged = await _stagePart(asset, part);
       final taskId = '${session.id}#${part.partNumber}';
       final preferences = await SharedPreferences.getInstance();
       final scheduled = await _bridge.schedule(
         taskId: taskId,
         filePath: staged.tempPath!,
-        url: await _uri('/api/videos/${video.id}/parts/${part.partNumber}'),
+        url: await _uri(
+          '/api/videos/${video.id}/assets/${asset.type}/parts/${part.partNumber}',
+        ),
         headers: {
           ...await _headers(json: false),
           'x-part-sha256': staged.sha256!,
@@ -282,7 +354,7 @@ class UploadService {
         );
         available--;
       } else {
-        await _uploadPartForeground(video.id, staged);
+        await _uploadPartForeground(video.id, asset.type, staged);
         await _deleteTemp(staged.tempPath);
         await AppDatabase.instance.updateUploadPart(
           session.id,
@@ -294,15 +366,15 @@ class UploadService {
         );
       }
     }
-    final refreshed = await _reconcileServer(video, session);
+    final refreshed = await _reconcileServer(video, asset, session);
     if (refreshed.completedParts == refreshed.totalParts) {
-      await _complete(video, refreshed);
+      await _completeAsset(video, asset, refreshed);
     } else {
-      await _scheduleWindow(video, refreshed, force: force);
+      await _scheduleWindow(video, asset, refreshed, force: force);
     }
   }
 
-  Future<UploadPart> _stagePart(VideoRecord video, UploadPart part) async {
+  Future<UploadPart> _stagePart(_UploadAsset asset, UploadPart part) async {
     final support = await getApplicationSupportDirectory();
     final directory = Directory(
       p.join(support.path, 'upload_parts', part.sessionId),
@@ -310,7 +382,7 @@ class UploadService {
     await directory.create(recursive: true);
     final output = File(p.join(directory.path, 'part_${part.partNumber}'));
     if (!await output.exists() || await output.length() != part.length) {
-      final source = await File(video.localPath).open();
+      final source = await File(asset.path).open();
       try {
         await source.setPosition(part.offset);
         final bytes = await source.read(part.length);
@@ -344,11 +416,17 @@ class UploadService {
     );
   }
 
-  Future<void> _uploadPartForeground(String videoId, UploadPart part) async {
+  Future<void> _uploadPartForeground(
+    String videoId,
+    String assetType,
+    UploadPart part,
+  ) async {
     final file = File(part.tempPath!);
     final request = http.StreamedRequest(
       'PUT',
-      await _uri('/api/videos/$videoId/parts/${part.partNumber}'),
+      await _uri(
+        '/api/videos/$videoId/assets/$assetType/parts/${part.partNumber}',
+      ),
     );
     request.headers.addAll(await _headers(json: false));
     request.headers['content-type'] = 'application/octet-stream';
@@ -383,6 +461,14 @@ class UploadService {
         'resolution': video.resolution,
         'fileSize': video.fileSize,
         'sha256': video.sha256,
+        'assets': {
+          for (final asset in _assets(video))
+            asset.type: {
+              'fileName': asset.fileName,
+              'fileSize': asset.fileSize,
+              'sha256': asset.sha256,
+            },
+        },
       }),
     );
     if (![200, 201].contains(response.statusCode)) {
@@ -392,10 +478,11 @@ class UploadService {
 
   Future<void> _initializeUpload(
     VideoRecord video,
+    _UploadAsset asset,
     UploadSession session,
   ) async {
     final response = await http.post(
-      await _uri('/api/videos/${video.id}/upload/init'),
+      await _uri('/api/videos/${video.id}/assets/${asset.type}/upload/init'),
       headers: await _headers(),
       body: jsonEncode({
         'uploadSessionId': session.id,
@@ -409,9 +496,9 @@ class UploadService {
     }
   }
 
-  Future<Set<int>> _completedParts(String videoId) async {
+  Future<Set<int>> _completedParts(String videoId, String assetType) async {
     final response = await http.get(
-      await _uri('/api/videos/$videoId/parts'),
+      await _uri('/api/videos/$videoId/assets/$assetType/parts'),
       headers: await _headers(json: false),
     );
     if (response.statusCode != 200) {
@@ -423,14 +510,20 @@ class UploadService {
         .toSet();
   }
 
-  Future<void> _complete(VideoRecord video, UploadSession session) async {
+  Future<void> _completeAsset(
+    VideoRecord video,
+    _UploadAsset asset,
+    UploadSession session,
+  ) async {
     final response = await http.post(
-      await _uri('/api/videos/${video.id}/upload/complete'),
+      await _uri(
+        '/api/videos/${video.id}/assets/${asset.type}/upload/complete',
+      ),
       headers: await _headers(),
       body: jsonEncode({
         'uploadSessionId': session.id,
         'totalParts': session.totalParts,
-        'sha256': video.sha256,
+        'sha256': asset.sha256,
       }),
     );
     if (response.statusCode != 200) {
@@ -444,10 +537,39 @@ class UploadService {
         lastError: '',
       ),
     );
-    await AppDatabase.instance.save(
-      video.copyWith(status: UploadStatus.uploaded, progress: 1),
-    );
     await _deleteSessionTemps(session.id);
+  }
+
+  Future<double> _bundleProgress(String videoId) async {
+    final sessions = await AppDatabase.instance.uploadSessionsForVideo(videoId);
+    if (sessions.isEmpty) return 0;
+    final totalParts = sessions.fold<int>(
+      0,
+      (sum, item) => sum + item.totalParts,
+    );
+    final completed = sessions.fold<int>(
+      0,
+      (sum, item) => sum + item.completedParts,
+    );
+    return totalParts == 0 ? 0 : completed / totalParts;
+  }
+
+  Future<void> _refreshBundleStatus(VideoRecord video) async {
+    final response = await http.get(
+      await _uri('/api/videos/${video.id}/status'),
+      headers: await _headers(json: false),
+    );
+    if (response.statusCode != 200) {
+      throw HttpException('Read upload status failed: ${response.statusCode}');
+    }
+    final payload = jsonDecode(response.body) as Map<String, dynamic>;
+    final uploaded = payload['status'] == 'uploaded';
+    await AppDatabase.instance.save(
+      video.copyWith(
+        status: uploaded ? UploadStatus.uploaded : UploadStatus.uploading,
+        progress: uploaded ? 1 : await _bundleProgress(video.id),
+      ),
+    );
   }
 
   Future<void> _recordFailure(

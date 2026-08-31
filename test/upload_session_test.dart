@@ -7,6 +7,7 @@ void main() {
     final session = UploadSession(
       id: 'session-id',
       videoId: 'video-id',
+      assetType: 'audio',
       state: UploadSessionState.transferring,
       partSize: 16 * 1024 * 1024,
       totalParts: 8,
@@ -23,6 +24,7 @@ void main() {
     final restored = UploadSession.fromMap(session.toMap());
 
     expect(restored.state, UploadSessionState.transferring);
+    expect(restored.assetType, 'audio');
     expect(restored.completedParts, 3);
     expect(restored.partSize, 16 * 1024 * 1024);
     expect(restored.nextRetryAt, createdAt.add(const Duration(seconds: 8)));

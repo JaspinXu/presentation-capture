@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:nus_presentation_capture/l10n/app_strings.dart';
+import 'package:nus_presentation_capture/main.dart';
 import 'package:nus_presentation_capture/pages/login_page.dart';
 import 'package:nus_presentation_capture/pages/settings_page.dart';
 import 'package:nus_presentation_capture/services/auth_service.dart';
@@ -12,10 +13,31 @@ Widget localized(Widget child, {String languageCode = 'en'}) => AppStringsScope(
   child: MaterialApp(home: child),
 );
 
+class _SignedOutAuthService extends AuthService {
+  @override
+  Future<bool> hasSession() async => false;
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('login screen exposes all supported sign-in paths', (
+  testWidgets('app startup resolves the session and shows login', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      CaptureApp(
+        authService: _SignedOutAuthService(),
+        initialLanguageCode: 'en',
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('NUS Presentation Capture'), findsOneWidget);
+    expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+  });
+
+  testWidgets('login screen exposes Google as the only sign-in path', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -31,9 +53,11 @@ void main() {
     await tester.pump();
 
     expect(find.text('NUS Presentation Capture'), findsOneWidget);
-    expect(find.text('Sign in'), findsOneWidget);
-    expect(find.text('Continue with Apple'), findsOneWidget);
+    expect(find.text('Sign in'), findsNothing);
+    expect(find.text('Continue with Apple'), findsNothing);
     expect(find.text('Continue with Google'), findsOneWidget);
+    expect(find.text('Email or username'), findsNothing);
+    expect(find.text('Password'), findsNothing);
     expect(find.text('Server URL'), findsOneWidget);
     expect(find.text('http://localhost:8080'), findsOneWidget);
   });

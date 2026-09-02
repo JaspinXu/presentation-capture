@@ -10,6 +10,7 @@ import { createRemoteJWKSet, jwtVerify } from 'jose';
 
 const app = express();
 const port = Number(process.env.PORT ?? 8080);
+const host = process.env.HOST ?? '0.0.0.0';
 const dataRoot = path.resolve(process.env.DATA_DIR ?? './data');
 const demoAccount = process.env.DEMO_ACCOUNT ?? 'demo@nus.edu.sg';
 const demoPassword = process.env.DEMO_PASSWORD ?? 'demo1234';
@@ -360,7 +361,7 @@ app.use((error, _req, res, _next) => {
 });
 
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(port, '0.0.0.0', () => console.log(`Upload server listening on :${port}`));
+  app.listen(port, host, () => console.log(`Upload server listening on ${host}:${port}`));
 }
 
 export default app;

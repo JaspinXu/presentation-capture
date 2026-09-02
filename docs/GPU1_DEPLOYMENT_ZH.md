@@ -73,6 +73,8 @@ location /presentation-capture/ {
 }
 ```
 
+仓库中的 `server/nginx/presentation-capture-location.conf` 是同一段可审查配置。GPU1 管理员应把它复制为 root 所有的 Nginx snippet，并在 `smc-gpu1.ddns.comp.nus.edu.sg` 的 HTTPS `server` 块中添加 `include`；不要直接 include 用户可写目录中的文件。
+
 App 的服务器 URL 应使用证书对应的 HTTPS 域名和上述路径前缀，不能使用公网 IP：
 
 ```text
@@ -101,3 +103,9 @@ find /data2/zhaobin/presentation-capture -mindepth 2 -maxdepth 2 \
 ```
 
 必须在真实 iPhone 上继续验证 WAV 可播放、音频时长与 MP4 一致、暂停/继续后的连续性，以及锁屏、断网和恢复上传。
+
+## 没有 Docker 权限时
+
+如果管理员没有授予 Docker daemon 权限，不要把用户加入 `docker` 组或尝试绕过权限。经管理员同意后，可以使用 Node.js 22 和 `server/tool/start_user_service.sh` 在普通用户权限下监听 `127.0.0.1:8080`。环境变量保存在权限为 `600` 的 `~/.config/presentation-capture/server.env`，并使用用户 `crontab` 的 `@reboot` 项启动。
+
+这种方式仍然需要管理员把 Nginx 的 `/presentation-capture/` 路由代理到 `127.0.0.1:8080`。普通用户部署不能也不应修改 `/etc/nginx`。

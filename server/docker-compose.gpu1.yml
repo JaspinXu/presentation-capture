@@ -5,6 +5,7 @@ services:
     user: "${UPLOAD_UID:?set UPLOAD_UID to id -u}:${UPLOAD_GID:?set UPLOAD_GID to id -g}"
     environment:
       PORT: "8080"
+      HOST: 0.0.0.0
       DATA_DIR: /data
       ENABLE_DEMO_LOGIN: "false"
       AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in the server environment}

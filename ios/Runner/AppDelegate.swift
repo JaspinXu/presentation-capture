@@ -47,24 +47,102 @@ import UIKit
     let destination = URL(fileURLWithPath: outputPath)
     try? FileManager.default.removeItem(at: destination)
     let asset = AVURLAsset(url: source)
-    guard let exporter = AVAssetExportSession(
-      asset: asset,
-      presetName: AVAssetExportPresetAppleM4A
-    ) else {
-      result(FlutterError(code: "audio_export_unavailable", message: "Audio export is unavailable", details: nil))
-      return
-    }
-    exporter.outputURL = destination
-    exporter.outputFileType = .m4a
-    exporter.shouldOptimizeForNetworkUse = true
-    exporter.exportAsynchronously {
-      DispatchQueue.main.async {
-        if exporter.status == .completed {
-          result(destination.path)
-        } else {
+    asset.loadTracks(withMediaType: .audio) { tracks, loadError in
+      guard loadError == nil, let track = tracks?.first else {
+        DispatchQueue.main.async {
+          result(FlutterError(
+            code: "audio_track_unavailable",
+            message: loadError?.localizedDescription ?? "The recording has no audio track",
+            details: nil
+          ))
+        }
+        return
+      }
+
+      do {
+        let reader = try AVAssetReader(asset: asset)
+        let audioSettings: [String: Any] = [
+          AVFormatIDKey: kAudioFormatLinearPCM,
+          AVSampleRateKey: 48_000,
+          AVNumberOfChannelsKey: 1,
+          AVLinearPCMBitDepthKey: 16,
+          AVLinearPCMIsBigEndianKey: false,
+          AVLinearPCMIsFloatKey: false,
+          AVLinearPCMIsNonInterleaved: false,
+        ]
+        let readerOutput = AVAssetReaderTrackOutput(
+          track: track,
+          outputSettings: audioSettings
+        )
+        guard reader.canAdd(readerOutput) else {
+          throw MediaProcessingError.configuration("Cannot read the recording's audio track")
+        }
+        reader.add(readerOutput)
+
+        let writer = try AVAssetWriter(outputURL: destination, fileType: .wav)
+        let writerInput = AVAssetWriterInput(
+          mediaType: .audio,
+          outputSettings: audioSettings
+        )
+        writerInput.expectsMediaDataInRealTime = false
+        guard writer.canAdd(writerInput) else {
+          throw MediaProcessingError.configuration("Cannot create a WAV audio file")
+        }
+        writer.add(writerInput)
+        guard writer.startWriting(), reader.startReading() else {
+          throw writer.error ?? reader.error ?? MediaProcessingError.configuration("Audio conversion could not start")
+        }
+        writer.startSession(atSourceTime: .zero)
+
+        let queue = DispatchQueue(label: "sg.edu.nus.presentation_capture.wav_export")
+        var completed = false
+        func finish(_ error: Error?) {
+          guard !completed else { return }
+          completed = true
+          DispatchQueue.main.async {
+            if let error {
+              try? FileManager.default.removeItem(at: destination)
+              result(FlutterError(
+                code: "audio_export_failed",
+                message: error.localizedDescription,
+                details: nil
+              ))
+            } else {
+              result(destination.path)
+            }
+          }
+        }
+
+        writerInput.requestMediaDataWhenReady(on: queue) {
+          while writerInput.isReadyForMoreMediaData && !completed {
+            if let sample = readerOutput.copyNextSampleBuffer() {
+              if !writerInput.append(sample) {
+                reader.cancelReading()
+                writer.cancelWriting()
+                finish(writer.error ?? MediaProcessingError.configuration("Could not write WAV audio"))
+              }
+              continue
+            }
+
+            writerInput.markAsFinished()
+            if reader.status == .failed {
+              writer.cancelWriting()
+              finish(reader.error ?? MediaProcessingError.configuration("Could not decode recording audio"))
+            } else {
+              writer.finishWriting {
+                finish(writer.status == .completed
+                  ? nil
+                  : writer.error ?? MediaProcessingError.configuration("Could not finish WAV audio"))
+              }
+            }
+          }
+        }
+      } catch {
+        DispatchQueue.main.async {
+          try? FileManager.default.removeItem(at: destination)
           result(FlutterError(
             code: "audio_export_failed",
-            message: exporter.error?.localizedDescription ?? "Audio export failed",
+            message: error.localizedDescription,
             details: nil
           ))
         }
@@ -78,6 +156,16 @@ import UIKit
     completionHandler: @escaping () -> Void
   ) {
     BackgroundUploadManager.shared.backgroundCompletionHandler = completionHandler
+  }
+}
+
+private enum MediaProcessingError: LocalizedError {
+  case configuration(String)
+
+  var errorDescription: String? {
+    switch self {
+    case .configuration(let message): message
+    }
   }
 }
 

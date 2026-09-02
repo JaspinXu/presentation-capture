@@ -11,7 +11,7 @@ void main() {
       resolution: '1080p',
       fileSize: 100,
       sha256: 'video-hash',
-      audioPath: '/audio/audio.m4a',
+      audioPath: '/audio/audio.wav',
       audioSize: 20,
       audioSha256: 'audio-hash',
       presentationPath: '/presentations/slides.pdf',
@@ -24,7 +24,7 @@ void main() {
     final restored = VideoRecord.fromMap(record.toMap());
 
     expect(restored.localPath, endsWith('.mp4'));
-    expect(restored.audioPath, endsWith('.m4a'));
+    expect(restored.audioPath, endsWith('.wav'));
     expect(restored.presentationName, 'slides.pdf');
     expect(restored.presentationSha256, 'presentation-hash');
   });

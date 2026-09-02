@@ -106,7 +106,7 @@ class UploadService {
       path: video.audioPath,
       fileSize: video.audioSize,
       sha256: video.audioSha256,
-      fileName: 'audio.m4a',
+      fileName: 'audio.wav',
     ),
     _UploadAsset(
       type: 'presentation',
@@ -196,13 +196,29 @@ class UploadService {
   Future<void> _validateSource(_UploadAsset asset) async {
     final source = File(asset.path);
     if (!await source.exists()) {
-      throw const FileSystemException('Source video is missing');
+      throw FileSystemException('Source ${asset.type} is missing', asset.path);
     }
     final length = await source.length();
-    if (length <= 0) throw const FileSystemException('Source video is empty');
+    if (length <= 0) {
+      throw FileSystemException('Source ${asset.type} is empty', asset.path);
+    }
     if (length != asset.fileSize || asset.sha256.isEmpty) {
-      throw const FileSystemException(
-        'Source video size changed after recording',
+      throw FileSystemException(
+        'Source ${asset.type} changed after the upload was prepared',
+        asset.path,
+      );
+    }
+    final extension = p.extension(asset.path).toLowerCase();
+    final accepted = switch (asset.type) {
+      'video' => extension == '.mp4',
+      'audio' => extension == '.wav',
+      'presentation' => const {'.ppt', '.pptx', '.pdf'}.contains(extension),
+      _ => false,
+    };
+    if (!accepted) {
+      throw FileSystemException(
+        'Source ${asset.type} has an unsupported file type',
+        asset.path,
       );
     }
   }

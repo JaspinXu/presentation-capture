@@ -32,6 +32,8 @@ migrate_working_dir/
 server/node_modules/
 server/data/*
 !server/data/.gitkeep
+server/.env*
+!server/.env.gpu1.example
 .pub-cache/
 .pub/
 /build/

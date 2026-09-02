@@ -15,7 +15,7 @@ This project borrows Stera's durable-session and reconciliation ideas, but delib
 - Lab account/password login for demo and development
 - Google Sign-In as the only user-facing authentication method
 - Required PPT, PPTX, or PDF selection for each uploaded recording
-- Native iOS audio extraction to M4A without creating another full video copy
+- Native iOS audio extraction to uncompressed 48 kHz, 16-bit mono WAV without creating another full video copy
 - Durable SQLite `upload_sessions` and `upload_parts` state
 - Frozen 16 MiB multipart upload plan with a three-part staging window
 - Native iOS background upload engine with SQLite/WAL journal, automatic sliding-window refill, server reconciliation, retry backoff, and SHA-256 checks
@@ -27,13 +27,13 @@ This project borrows Stera's durable-session and reconciliation ideas, but delib
 ```text
 Flutter camera (H.264/HEVC MP4 + microphone)
   -> app Documents/recordings/<video-id>.mp4
-  -> app-private final.mp4 + audio.m4a + presentation.ppt/.pptx/.pdf
+  -> app-private final.mp4 + audio.wav + presentation.ppt/.pptx/.pdf
   -> SQLite videos + per-asset upload sessions and parts
   -> native iOS SQLite journal + at most 3 temporary 16 MiB chunks
   -> background URLSession with automatic window refill
   -> NUS Linux Express API
   -> per-asset parts/<part-number>
-  -> streamed final.mp4, audio.m4a, and presentation assembly + SHA-256 verification
+  -> streamed final.mp4, audio.wav, and presentation assembly + SHA-256 verification
 ```
 
 The server's completed-parts list is authoritative. After a restart or network interruption, the client compares local SQLite state, the native SQLite journal, active iOS tasks, and the server before scheduling missing parts again. While Flutter is suspended, Swift creates the next part only when a window slot becomes available and directly finalizes the upload after the last part. The app never prepares a second full copy of a 4K video.
@@ -95,7 +95,7 @@ DEMO_PASSWORD=demo1234
 DEMO_TOKEN=<development token>
 ```
 
-For deployment, set `ENABLE_DEMO_LOGIN=false`, use HTTPS, and replace every default secret. Each completed bundle is written to `DATA_DIR/<video-id>/final.mp4`, `audio.m4a`, and `presentation.<ppt|pptx|pdf>`.
+For deployment, set `ENABLE_DEMO_LOGIN=false`, use HTTPS, and replace every default secret. Each completed bundle is written to `DATA_DIR/<video-id>/final.mp4`, `audio.wav`, and `presentation.<ppt|pptx|pdf>`.
 
 ## Verification on this Windows computer
 
@@ -129,6 +129,7 @@ Select an Apple team and a real iPhone. Test all resolution choices because 4K a
 
 ## Production notes
 
+- GPU1 deployment uses a dedicated host bind mount and keeps credentials outside Git. Follow [GPU1 上传服务部署](docs/GPU1_DEPLOYMENT_ZH.md) after the server administrator approves the 443 reverse-proxy route and storage location.
 - The current Linux server writes to one filesystem. Before thousands of users, decide storage quota, retention, backup, monitoring, and whether object storage is preferable.
 - iOS deliberately stops relaunching background work after the user force-quits the app; reopening it reconciles and resumes the durable upload session. Normal screen locking, app switching, suspension, network loss, and process reclamation use the native background engine.
 - Remove `NSAllowsArbitraryLoads` after the lab HTTPS endpoint is available.

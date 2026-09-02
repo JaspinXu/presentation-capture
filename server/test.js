@@ -39,7 +39,7 @@ test('accepts, resumes, and assembles video, audio, and presentation assets', as
   const assets = {
     video: { fileName: 'capture.mp4', fileSize: video.length, sha256 },
     audio: {
-      fileName: 'audio.m4a',
+      fileName: 'audio.wav',
       fileSize: audio.length,
       sha256: crypto.createHash('sha256').update(audio).digest('hex'),
     },
@@ -106,7 +106,7 @@ test('accepts, resumes, and assembles video, audio, and presentation assets', as
     uploadAsset('presentation', presentation, 1024),
   ]);
   assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'final.mp4')), video);
-  assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'audio.m4a')), audio);
+  assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'audio.wav')), audio);
   assert.deepEqual(await fsp.readFile(path.join(dataDirectory, id, 'presentation.pdf')), presentation);
   assert.equal((await (await fetch(`${baseUrl}/api/videos/${id}/status`, { headers: auth })).json()).status, 'uploaded');
 });
@@ -119,4 +119,23 @@ test('does not accept social tokens when the provider is unconfigured', async ()
   });
   assert.equal(response.status, 503);
   assert.equal((await response.json()).error, 'google_not_configured');
+});
+
+test('rejects audio assets that are not WAV files', async () => {
+  const body = Buffer.from('asset');
+  const hash = crypto.createHash('sha256').update(body).digest('hex');
+  const response = await fetch(`${baseUrl}/api/videos`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer test-token', 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: '36f6f381-3d91-4a46-97ac-511ed2056424',
+      assets: {
+        video: { fileName: 'final.mp4', fileSize: body.length, sha256: hash },
+        audio: { fileName: 'audio.m4a', fileSize: body.length, sha256: hash },
+        presentation: { fileName: 'slides.pdf', fileSize: body.length, sha256: hash },
+      },
+    }),
+  });
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, 'invalid_audio_type');
 });

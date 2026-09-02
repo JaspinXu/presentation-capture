@@ -81,7 +81,7 @@ class _ReviewPageState extends State<ReviewPage> {
         p.join(presentationDirectory.path, '${widget.draft.id}$extension'),
       );
       await File(_presentation!.path).copy(presentationFile.path);
-      final audioPath = p.join(audioDirectory.path, '${widget.draft.id}.m4a');
+      final audioPath = p.join(audioDirectory.path, '${widget.draft.id}.wav');
       await MediaProcessingService().extractAudio(
         videoPath: videoFile.path,
         outputPath: audioPath,

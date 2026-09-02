@@ -8,10 +8,26 @@ import 'package:shared_preferences/shared_preferences.dart';
 class AuthService {
   static const _storage = FlutterSecureStorage();
   static Future<void>? _googleInitialization;
+  static const _secureStorageTimeout = Duration(seconds: 5);
 
-  Future<bool> hasSession() async =>
-      (await _storage.read(key: 'token')) != null;
-  Future<String?> token() => _storage.read(key: 'token');
+  Future<bool> hasSession() async {
+    try {
+      return (await _storage
+              .read(key: 'token')
+              .timeout(_secureStorageTimeout)) !=
+          null;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<String?> token() async {
+    try {
+      return await _storage.read(key: 'token').timeout(_secureStorageTimeout);
+    } catch (_) {
+      return null;
+    }
+  }
 
   Future<Uri> _endpoint(String path) async {
     final preferences = await SharedPreferences.getInstance();

@@ -1,0 +1,17 @@
+services:
+  upload-server:
+    build: .
+    restart: unless-stopped
+    user: "${UPLOAD_UID:?set UPLOAD_UID to id -u}:${UPLOAD_GID:?set UPLOAD_GID to id -g}"
+    environment:
+      PORT: "8080"
+      DATA_DIR: /data
+      ENABLE_DEMO_LOGIN: "false"
+      AUTH_SECRET: ${AUTH_SECRET:?set AUTH_SECRET in the server environment}
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:?set GOOGLE_CLIENT_IDS in the server environment}
+    volumes:
+      - type: bind
+        source: /data2/zhaobin/presentation-capture
+        target: /data
+    ports:
+      - "127.0.0.1:8080:8080"

@@ -28,7 +28,7 @@ app.use(express.json({ limit: '1mb' }));
 
 function requireAuth(req, res, next) {
   const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  if (token === demoToken) {
+  if (demoLoginEnabled && token === demoToken) {
     req.userId = 'demo-user';
     return next();
   }
@@ -181,9 +181,15 @@ app.post('/api/videos', async (req, res, next) => {
     if (!['.ppt', '.pptx', '.pdf'].includes(presentationExtension)) {
       return res.status(400).json({ error: 'invalid_presentation_type' });
     }
+    if (path.extname(assets.video.fileName ?? '').toLowerCase() !== '.mp4') {
+      return res.status(400).json({ error: 'invalid_video_type' });
+    }
+    if (path.extname(assets.audio.fileName ?? '').toLowerCase() !== '.wav') {
+      return res.status(400).json({ error: 'invalid_audio_type' });
+    }
     const normalizedAssets = {
       video: { ...assets.video, fileName: 'final.mp4', status: 'created' },
-      audio: { ...assets.audio, fileName: 'audio.m4a', status: 'created' },
+      audio: { ...assets.audio, fileName: 'audio.wav', status: 'created' },
       presentation: {
         ...assets.presentation,
         originalFileName: path.basename(assets.presentation.fileName),

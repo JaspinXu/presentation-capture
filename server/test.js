@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-const dataDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'nus-upload-test-'));
+const dataDirectory = await fsp.mkdtemp(path.join(os.tmpdir(), 'presentation-upload-test-'));
 process.env.NODE_ENV = 'test';
 process.env.DATA_DIR = dataDirectory;
 process.env.DEMO_TOKEN = 'test-token';
@@ -24,7 +24,7 @@ test('accepts, resumes, and assembles video, audio, and presentation assets', as
   const login = await fetch(`${baseUrl}/api/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ account: 'demo@nus.edu.sg', password: 'demo1234' }),
+    body: JSON.stringify({ account: 'demo@example.com', password: 'demo1234' }),
   });
   assert.equal(login.status, 200);
 

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 
 class MediaProcessingService {
   static const _channel = MethodChannel(
-    'sg.edu.nus.presentation_capture/media_processing',
+    'com.jaspinxu.presentation_capture/media_processing',
   );
 
   Future<String> extractAudio({

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nus_presentation_capture/l10n/app_strings.dart';
+import 'package:presentation_capture/l10n/app_strings.dart';
 
 void main() {
   test('English and Chinese strings are available', () {

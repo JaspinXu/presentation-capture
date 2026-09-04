@@ -55,7 +55,7 @@ class _CaptureAppState extends State<CaptureApp> {
       languageCode: _locale.languageCode,
       child: MaterialApp(
         debugShowCheckedModeBanner: false,
-        title: 'NUS Presentation Capture',
+        title: 'Presentation Capture',
         locale: _locale,
         supportedLocales: const [Locale('en'), Locale('zh')],
         theme: ThemeData(

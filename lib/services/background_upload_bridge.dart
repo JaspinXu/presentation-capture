@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 
 class BackgroundUploadBridge {
   static const _channel = MethodChannel(
-    'sg.edu.nus.presentation_capture/background_upload',
+    'com.jaspinxu.presentation_capture/background_upload',
   );
 
   Future<bool> schedule({

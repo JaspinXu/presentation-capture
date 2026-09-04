@@ -13,7 +13,7 @@
 按需要安装：
 
 - **Docker Desktop for Mac**：推荐，用来在 Mac 本机启动演示登录和视频上传服务器。
-- **GitHub Desktop**：如果暂时不熟悉 Git 命令，可用它登录 GitHub 并克隆 private repository。
+- **GitHub Desktop**：如果暂时不熟悉 Git 命令，可用它登录 GitHub 并克隆仓库。
 - **CocoaPods**：当前项目使用 Flutter 的 Swift Package Manager，不需要为了第一次运行专门安装。以后某个新增插件只支持 CocoaPods，或者 `flutter doctor` 明确提示时再安装。
 
 不需要安装 Android Studio，也不需要先购买 Apple Developer Program。iOS 模拟器不需要代码签名；真机长期分发和 TestFlight 时才需要进一步处理开发者团队和证书。
@@ -104,7 +104,7 @@ http://localhost:8080
 以下演示账号仅保留给服务器自动化测试，App UI 不再提供账号密码登录：
 
 ```text
-demo@nus.edu.sg
+demo@example.com
 demo1234
 ```
 
@@ -191,7 +191,7 @@ open ios/Runner.xcworkspace
 5. 在 iPhone 的 **设置 > 隐私与安全性 > 开发者模式** 中启用 Developer Mode，并按提示重启。
 6. 点击 Xcode Run，第一次出现钥匙串提示时选择允许。
 
-正式 bundle ID 为 `sg.edu.nus.nusPresentationCapture`。真机调试可以选择实验室开发团队；使用个人免费 Team 时，需要使用自己的唯一 Debug bundle ID。Google 登录还需要与当前 bundle ID 匹配的 iOS OAuth client；未配置凭据时不能登录主页。
+默认 Release bundle ID 为 `com.jaspinxu.presentationcapture`，Debug bundle ID 为 `com.jaspinxu.presentationcapture.dev`。构建自己的发行版本前，请改成由你控制的唯一 bundle ID。Google 登录还需要与当前 bundle ID 匹配的 iOS OAuth client；未配置凭据时不能登录主页。
 
 真实 iPhone 访问 Mac 上的服务器时，不能使用 `localhost`。把 App 设置中的服务器地址改成 Mac 的局域网 IP，例如：
 

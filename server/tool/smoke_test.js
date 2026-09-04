@@ -68,7 +68,7 @@ async function expect(response, expected, operation) {
 await expect(await fetch(`${baseUrl}/api/videos`, {
   method: 'POST',
   headers: { ...headers, 'content-type': 'application/json' },
-  body: JSON.stringify({ id, title: 'GPU1 deployment smoke test', assets }),
+  body: JSON.stringify({ id, title: 'Production deployment smoke test', assets }),
 }), 201, 'create bundle');
 
 for (const [type, file] of Object.entries(files)) {

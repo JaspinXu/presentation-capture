@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>NUS Presentation Capture</string>
+	<string>Presentation Capture</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,7 +26,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>nus_presentation_capture</string>
+	<string>presentation_capture</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -53,7 +53,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Microphone access is required to record presentation audio.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Local network access is required to upload recordings to the NUS Lab server.</string>
+	<string>Local network access is required to upload recordings to the configured server.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

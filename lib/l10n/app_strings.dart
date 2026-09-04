@@ -25,7 +25,7 @@ class AppStrings {
 
   static const Map<String, Map<String, String>> _values = {
     'en': {
-      'appName': 'NUS Presentation Capture',
+      'appName': 'Presentation Capture',
       'continueGoogle': 'Continue with Google',
       'videos': 'My recordings',
       'empty': 'No recordings yet',
@@ -83,7 +83,7 @@ class AppStrings {
           'Saved locally. Upload will resume when the server is available.',
     },
     'zh': {
-      'appName': 'NUS 演示视频采集',
+      'appName': '演示录制',
       'continueGoogle': '使用 Google 登录',
       'videos': '我的录制',
       'empty': '暂无录制视频',

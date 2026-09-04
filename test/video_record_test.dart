@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nus_presentation_capture/models/video_record.dart';
+import 'package:presentation_capture/models/video_record.dart';
 
 void main() {
   test('video record preserves the three-file upload bundle', () {

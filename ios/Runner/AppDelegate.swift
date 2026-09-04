@@ -22,7 +22,7 @@ import UIKit
       messenger: engineBridge.applicationRegistrar.messenger()
     )
     mediaChannel = FlutterMethodChannel(
-      name: "sg.edu.nus.presentation_capture/media_processing",
+      name: "com.jaspinxu.presentation_capture/media_processing",
       binaryMessenger: engineBridge.applicationRegistrar.messenger()
     )
     mediaChannel?.setMethodCallHandler { call, result in
@@ -94,7 +94,7 @@ import UIKit
         }
         writer.startSession(atSourceTime: .zero)
 
-        let queue = DispatchQueue(label: "sg.edu.nus.presentation_capture.wav_export")
+        let queue = DispatchQueue(label: "com.jaspinxu.presentation_capture.wav_export")
         var completed = false
         func finish(_ error: Error?) {
           guard !completed else { return }
@@ -472,9 +472,9 @@ private final class UploadJournal {
 
 final class BackgroundUploadManager: NSObject, URLSessionTaskDelegate, URLSessionDelegate {
   static let shared = BackgroundUploadManager()
-  private let identifier = "sg.edu.nus.presentation_capture.background_upload"
+  private let identifier = "com.jaspinxu.presentation_capture.background_upload"
   private let journal = UploadJournal()
-  private let workQueue = DispatchQueue(label: "sg.edu.nus.presentation_capture.upload_window")
+  private let workQueue = DispatchQueue(label: "com.jaspinxu.presentation_capture.upload_window")
   private let windowSize = 3
   private var channel: FlutterMethodChannel?
   var backgroundCompletionHandler: (() -> Void)?
@@ -504,7 +504,7 @@ final class BackgroundUploadManager: NSObject, URLSessionTaskDelegate, URLSessio
 
   func configure(messenger: FlutterBinaryMessenger) {
     channel = FlutterMethodChannel(
-      name: "sg.edu.nus.presentation_capture/background_upload",
+      name: "com.jaspinxu.presentation_capture/background_upload",
       binaryMessenger: messenger
     )
     channel?.setMethodCallHandler { [weak self] call, result in

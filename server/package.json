@@ -1,5 +1,5 @@
 {
-  "name": "nus-presentation-upload-server",
+  "name": "presentation-upload-server",
   "version": "0.1.0",
   "private": true,
   "type": "module",

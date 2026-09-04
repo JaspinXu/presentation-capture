@@ -12,7 +12,7 @@ services:
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:?set GOOGLE_CLIENT_IDS in the server environment}
     volumes:
       - type: bind
-        source: /data2/zhaobin/presentation-capture
+        source: ${UPLOAD_DATA_DIR:?set UPLOAD_DATA_DIR to an absolute host directory}
         target: /data
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${HOST:-127.0.0.1}:8080:8080"

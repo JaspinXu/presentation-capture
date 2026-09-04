@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:nus_presentation_capture/l10n/app_strings.dart';
-import 'package:nus_presentation_capture/main.dart';
-import 'package:nus_presentation_capture/pages/login_page.dart';
-import 'package:nus_presentation_capture/pages/settings_page.dart';
-import 'package:nus_presentation_capture/services/auth_service.dart';
+import 'package:presentation_capture/l10n/app_strings.dart';
+import 'package:presentation_capture/main.dart';
+import 'package:presentation_capture/pages/login_page.dart';
+import 'package:presentation_capture/pages/settings_page.dart';
+import 'package:presentation_capture/services/auth_service.dart';
 
 Widget localized(Widget child, {String languageCode = 'en'}) => AppStringsScope(
   languageCode: languageCode,
@@ -32,7 +32,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('NUS Presentation Capture'), findsOneWidget);
+    expect(find.text('Presentation Capture'), findsOneWidget);
     expect(find.text('Continue with Google'), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
@@ -52,7 +52,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('NUS Presentation Capture'), findsOneWidget);
+    expect(find.text('Presentation Capture'), findsOneWidget);
     expect(find.text('Sign in'), findsNothing);
     expect(find.text('Continue with Apple'), findsNothing);
     expect(find.text('Continue with Google'), findsOneWidget);

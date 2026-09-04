@@ -33,7 +33,7 @@ server/node_modules/
 server/data/*
 !server/data/.gitkeep
 server/.env*
-!server/.env.gpu1.example
+!server/.env.production.example
 .pub-cache/
 .pub/
 /build/

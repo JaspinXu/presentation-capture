@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:nus_presentation_capture/models/upload_session.dart';
+import 'package:presentation_capture/models/upload_session.dart';
 
 void main() {
   test('upload session survives a SQLite map round trip', () {
